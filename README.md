@@ -31,10 +31,11 @@ Abre http://localhost:4200
 
 ## Flujo de un pedido
 1. **Nuevo pedido**: foto, cliente, producto, material, precio y anticipo.
-2. **Generar STL**: crea el archivo y la vista previa encendida (5–15 s).
-3. **WhatsApp**: abre el chat con el cliente para mandarle la vista previa.
-4. Cambia el estado: Vista previa enviada → Aprobado → Imprimiendo → Listo → Entregado.
-5. **Descargar STL** y ábrelo en Creality Print con el proceso "0.12mm Litofano PETG".
+2. **Encuadre**: en el detalle del pedido, acerca y mueve la foto con las barras; el recuadro naranja marca lo que se imprime y la prueba rápida muestra cómo se verá. "Mejorar contraste" (activo por defecto) saca detalle en caras y sombras. Dale **Guardar encuadre**.
+3. **Generar STL**: crea el archivo y la vista previa encendida (5–15 s).
+4. **WhatsApp**: abre el chat con el cliente para mandarle la vista previa.
+5. Cambia el estado: Vista previa enviada → Aprobado → Imprimiendo → Listo → Entregado.
+6. **Descargar STL** y ábrelo en Creality Print con el proceso "0.12mm Litofano PETG".
 
 ## Pruebas del backend
 ```

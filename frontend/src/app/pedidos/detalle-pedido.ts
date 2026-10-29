@@ -3,7 +3,7 @@ import { CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.service';
+import { ESTADOS, Encuadre, Estado, Pedido, PedidosService, textoEstado } from './pedidos.service';
 
 @Component({
   selector: 'app-detalle-pedido',
@@ -20,17 +20,47 @@ import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.
         <div class="tarjeta">
           <div class="imagenes">
             <figure>
-              <img class="original" [src]="servicio.urlFoto(p.id)" alt="Foto original" />
-              <figcaption>Foto original</figcaption>
+              <div class="marco-foto">
+                <img class="original" [src]="servicio.urlFoto(p.id)" alt="Foto original"
+                  (load)="medirFoto($event)" />
+                @if (recorte(); as r) {
+                  <div class="recorte" [style.left.%]="r.izq" [style.top.%]="r.arr"
+                    [style.width.%]="r.ancho" [style.height.%]="r.alto"></div>
+                }
+              </div>
+              <figcaption>Foto original (el recuadro es lo que se imprime)</figcaption>
             </figure>
             <figure>
-              @if (p.stl_listo) {
+              @if (p.stl_listo && !pendiente()) {
                 <img [src]="servicio.urlPrevia(p.id, version())" alt="Vista previa encendida" />
+                <figcaption>Así se verá encendido</figcaption>
               } @else {
-                <div class="hueco">Sin generar</div>
+                <img [src]="servicio.urlEnsayo(p.id, ensayo(), version())" alt="Prueba de encuadre" />
+                <figcaption>Prueba rápida de encuadre</figcaption>
               }
-              <figcaption>Así se verá encendido</figcaption>
             </figure>
+          </div>
+
+          <div class="encuadre">
+            <div><label>Acercar ({{ ajuste().zoom.toFixed(1) }}×)</label>
+              <input type="range" min="1" max="4" step="0.1" [value]="ajuste().zoom"
+                (input)="mover('zoom', $event)" (change)="probar()" /></div>
+            <div><label>Mover a los lados</label>
+              <input type="range" min="0" max="1" step="0.01" [value]="ajuste().x"
+                (input)="mover('x', $event)" (change)="probar()" /></div>
+            <div><label>Mover arriba / abajo</label>
+              <input type="range" min="0" max="1" step="0.01" [value]="ajuste().y"
+                (input)="mover('y', $event)" (change)="probar()" /></div>
+            <label class="casilla">
+              <input type="checkbox" [checked]="ajuste().mejorar" (change)="cambiarMejorar($event)" />
+              Mejorar contraste (saca detalle en caras y sombras)
+            </label>
+            @if (pendiente()) {
+              <div class="acciones">
+                <button (click)="guardarEncuadre()">Guardar encuadre</button>
+                <button class="secundario" (click)="deshacerEncuadre()">Deshacer</button>
+              </div>
+            }
           </div>
 
           <div class="acciones">
@@ -111,6 +141,15 @@ import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.
     figure { margin: 0; }
     figure img, .hueco { width: 100%; aspect-ratio: 3 / 2; object-fit: contain; border-radius: 8px; background: #111; }
     .original { filter: grayscale(1); }
+    .marco-foto { position: relative; line-height: 0; overflow: hidden; border-radius: 8px; }
+    .marco-foto img { aspect-ratio: auto; object-fit: fill; display: block; }
+    .recorte { position: absolute; border: 2px solid var(--acento); border-radius: 4px;
+      box-shadow: 0 0 0 9999px rgb(0 0 0 / .45); pointer-events: none; }
+    .encuadre { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+    .encuadre input[type='range'] { padding: 0; accent-color: var(--acento); }
+    .encuadre .casilla, .encuadre .acciones { grid-column: 1 / -1; }
+    .casilla { display: flex; gap: 8px; align-items: center; color: var(--texto); font-size: .9rem; margin: 0; }
+    .casilla input { width: auto; }
     .hueco { display: grid; place-items: center; color: #888; }
     figcaption { font-size: .8rem; color: var(--suave); margin-top: 4px; text-align: center; }
     .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
@@ -119,7 +158,7 @@ import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.
     .doble { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .nota { color: var(--suave); font-size: .85rem; margin: 8px 0 0; }
     p { margin: 0; }
-    @media (max-width: 760px) { .rejilla { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .rejilla, .encuadre { grid-template-columns: 1fr; } }
   `,
 })
 export class DetallePedido {
@@ -133,6 +172,32 @@ export class DetallePedido {
   error = signal('');
   version = signal(0);
 
+  // encuadre que se esta moviendo (ajuste) y el que se manda a la prueba rapida (ensayo)
+  ajuste = signal<Encuadre>({ x: 0.5, y: 0.5, zoom: 1, mejorar: true });
+  ensayo = signal<Encuadre>({ x: 0.5, y: 0.5, zoom: 1, mejorar: true });
+  private tamFoto = signal<{ w: number; h: number } | null>(null);
+
+  pendiente = computed(() => {
+    const p = this.pedido();
+    const a = this.ajuste();
+    return !!p && (a.x !== p.encuadre_x || a.y !== p.encuadre_y || a.zoom !== p.zoom || a.mejorar !== p.mejorar);
+  });
+
+  // recuadro sobre la foto, en % (misma cuenta que encuadrar() en el backend)
+  recorte = computed(() => {
+    const p = this.pedido();
+    const f = this.tamFoto();
+    if (!p || !f) return null;
+    const a = this.ajuste();
+    const r = p.forma === 'panel' ? f.w / f.h : (Math.PI * p.diametro) / p.alto;
+    let [cw, ch] = f.w / f.h > r ? [f.h * r, f.h] : [f.w, f.w / r];
+    cw /= a.zoom;
+    ch /= a.zoom;
+    const izq = Math.min(Math.max(a.x * f.w - cw / 2, 0), f.w - cw);
+    const arr = Math.min(Math.max(a.y * f.h - ch / 2, 0), f.h - ch);
+    return { izq: (izq / f.w) * 100, arr: (arr / f.h) * 100, ancho: (cw / f.w) * 100, alto: (ch / f.h) * 100 };
+  });
+
   whatsapp = computed(() => {
     const p = this.pedido();
     const tel = p?.telefono.replace(/\D/g, '');
@@ -144,16 +209,53 @@ export class DetallePedido {
 
   ngOnInit() {
     this.servicio.ver(this.id()).subscribe({
-      next: (p) => this.pedido.set(p),
+      next: (p) => {
+        this.pedido.set(p);
+        this.deshacerEncuadre();
+      },
       error: () => this.error.set('No se encontró el pedido.'),
     });
+  }
+
+  medirFoto(ev: Event) {
+    const img = ev.target as HTMLImageElement;
+    this.tamFoto.set({ w: img.naturalWidth, h: img.naturalHeight });
+  }
+
+  mover(campo: 'x' | 'y' | 'zoom', ev: Event) {
+    const valor = Number((ev.target as HTMLInputElement).value);
+    this.ajuste.update((a) => ({ ...a, [campo]: valor }));
+  }
+
+  cambiarMejorar(ev: Event) {
+    this.ajuste.update((a) => ({ ...a, mejorar: (ev.target as HTMLInputElement).checked }));
+    this.probar();
+  }
+
+  probar() {
+    this.ensayo.set(this.ajuste());
+  }
+
+  guardarEncuadre() {
+    const a = this.ajuste();
+    this.cambiar({ encuadre_x: a.x, encuadre_y: a.y, zoom: a.zoom, mejorar: a.mejorar });
+  }
+
+  deshacerEncuadre() {
+    const p = this.pedido();
+    if (!p) return;
+    this.ajuste.set({ x: p.encuadre_x, y: p.encuadre_y, zoom: p.zoom, mejorar: p.mejorar });
+    this.probar();
   }
 
   texto = (e: Estado) => textoEstado(e);
 
   cambiar(cambios: Partial<Pedido>) {
     this.servicio.actualizar(this.id(), cambios).subscribe({
-      next: (p) => this.pedido.set(p),
+      next: (p) => {
+        this.pedido.set(p);
+        this.version.update((v) => v + 1); // forma o medidas nuevas: refresca la prueba rapida
+      },
       error: () => this.error.set('No se pudo guardar el cambio.'),
     });
   }

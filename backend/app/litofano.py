@@ -3,6 +3,7 @@
 Uso:
   python litofano.py foto.jpg --forma panel   --ancho 100 --salida panel.stl
   python litofano.py foto.jpg --forma cilindro --diametro 80 --alto 100 --salida lampara.stl
+  python litofano.py foto.jpg --zoom 1.5 --x 0.4 --y 0.3 --mejorar --previa previa.png
 
 Zonas oscuras de la foto = material grueso (deja pasar poca luz).
 Zonas claras = material delgado (deja pasar mucha luz).
@@ -20,13 +21,62 @@ MATERIALES = {
 }
 
 
-def cargar_espesores(ruta, ancho_px, alto_px, t_min, t_max, invertir=False):
+def encuadrar(img, ancho_px, alto_px, x=0.5, y=0.5, zoom=1.0):
+    """Recorta con la proporcion del destino y escala a ancho_px x alto_px.
+
+    x, y: centro del recorte como fraccion de la foto (0-1). zoom >= 1 acerca.
+    Con los valores por defecto equivale a recortar al centro.
+    """
+    w, h = img.size
+    r = ancho_px / alto_px
+    cw, ch = (h * r, h) if w / h > r else (w, w / r)
+    zoom = max(1.0, zoom)
+    cw, ch = cw / zoom, ch / zoom
+    izq = min(max(x * w - cw / 2, 0), w - cw)
+    arr = min(max(y * h - ch / 2, 0), h - ch)
+    return img.resize((ancho_px, alto_px), Image.LANCZOS, box=(izq, arr, izq + cw, arr + ch))
+
+
+def clahe(gris, cuadros=8, limite=2.0):
+    """Ecualizacion de contraste local (CLAHE) para una imagen uint8.
+
+    Saca detalle en caras y zonas en sombra sin quemar las partes claras.
+    """
+    alto, ancho = gris.shape
+    th, tw = -(-alto // cuadros), -(-ancho // cuadros)
+    pad = np.pad(gris, ((0, th * cuadros - alto), (0, tw * cuadros - ancho)), mode="reflect")
+    bloques = pad.reshape(cuadros, th, cuadros, tw).transpose(0, 2, 1, 3).reshape(cuadros, cuadros, -1)
+    hist = np.stack([np.bincount(b, minlength=256) for b in bloques.reshape(-1, th * tw)])
+    tope = max(1.0, limite * th * tw / 256)
+    exceso = np.clip(hist - tope, 0, None).sum(axis=1, keepdims=True)
+    hist = np.minimum(hist, tope) + exceso / 256
+    mapas = (np.cumsum(hist, axis=1) / hist.sum(axis=1, keepdims=True) * 255).reshape(cuadros, cuadros, 256)
+
+    # interpolacion bilineal entre los mapas de los 4 cuadros vecinos
+    def ejes(n, t):
+        f = np.clip((np.arange(n) + 0.5) / t - 0.5, 0, cuadros - 1)
+        i0 = np.floor(f).astype(int)
+        return i0, np.minimum(i0 + 1, cuadros - 1), f - i0
+
+    y0, y1, wy = ejes(alto, th)
+    x0, x1, wx = ejes(ancho, tw)
+    y0, y1, wy = y0[:, None], y1[:, None], wy[:, None]
+    arriba = mapas[y0, x0, gris] * (1 - wx) + mapas[y0, x1, gris] * wx
+    abajo = mapas[y1, x0, gris] * (1 - wx) + mapas[y1, x1, gris] * wx
+    return (arriba * (1 - wy) + abajo * wy).astype(np.uint8)
+
+
+def cargar_espesores(ruta, ancho_px, alto_px, t_min, t_max, invertir=False,
+                     encuadre=(0.5, 0.5, 1.0), mejorar=False):
     img = Image.open(ruta)
     img = ImageOps.exif_transpose(img).convert("L")
     img = ImageOps.autocontrast(img, cutoff=1)
-    # recorta al centro con la proporcion del destino para no deformar la foto
-    img = ImageOps.fit(img, (ancho_px, alto_px), Image.LANCZOS)
-    brillo = np.asarray(img, dtype=np.float64) / 255.0
+    # recorta con la proporcion del destino para no deformar la foto
+    img = encuadrar(img, ancho_px, alto_px, *encuadre)
+    gris = np.asarray(img)
+    if mejorar:
+        gris = clahe(gris)
+    brillo = gris.astype(np.float64) / 255.0
     if invertir:
         brillo = 1.0 - brillo
     # fila 0 = parte de arriba de la foto -> la ponemos arriba en Z
@@ -103,12 +153,15 @@ def con_marco(esp, marco_mm, resolucion, grosor):
 
 
 def vista_previa(esp, ruta, k=1.2):
-    """Simula el litofano encendido: la luz pasa ~exp(-k * espesor)."""
+    """Simula el litofano encendido: la luz pasa ~exp(-k * espesor).
+
+    ruta puede ser un nombre de archivo o un archivo abierto (se guarda en PNG).
+    """
     luz = np.exp(-k * esp)
     luz = (luz - luz.min()) / (luz.max() - luz.min())
     calido = np.array([255, 214, 160]) / 255.0
     rgb = (luz[::-1, :, None] * calido * 255).astype(np.uint8)
-    Image.fromarray(rgb).save(ruta)
+    Image.fromarray(rgb).save(ruta, format="PNG")
 
 
 def guardar_stl(ruta, v, caras):
@@ -127,29 +180,41 @@ def guardar_stl(ruta, v, caras):
         fh.write(datos.tobytes())
 
 
-def generar(foto, salida_stl, forma="panel", material="pla", ancho=100.0, diametro=80.0,
-            alto=100.0, resolucion=0.2, marco=3.0, invertir=False, previa=None):
-    """Genera el STL (y opcionalmente la vista previa). Devuelve un resumen."""
+def espesores(foto, forma="panel", material="pla", ancho=100.0, diametro=80.0, alto=100.0,
+              resolucion=0.2, marco=3.0, invertir=False, encuadre=(0.5, 0.5, 1.0), mejorar=False,
+              t_min=None, t_max=None):
+    """Mapa de espesores (mm) de la pieza, con marco si es panel."""
     mat = MATERIALES[material]
+    t_min = mat["min"] if t_min is None else t_min
+    t_max = mat["max"] if t_max is None else t_max
     if forma == "panel":
         w, h = ImageOps.exif_transpose(Image.open(foto)).size
         cols = int(ancho / resolucion)
         filas = int(cols * h / w)
-        esp = cargar_espesores(foto, cols, filas, mat["min"], mat["max"], invertir)
-        esp = con_marco(esp, marco, resolucion, mat["max"] + 1.0)
-        v, caras = panel(esp, ancho + 2 * marco)
-        medidas = f"{ancho + 2 * marco:.0f} x {(ancho + 2 * marco) * esp.shape[0] / esp.shape[1]:.0f} mm"
-    elif forma == "cilindro":
+        esp = cargar_espesores(foto, cols, filas, t_min, t_max, invertir, encuadre, mejorar)
+        return con_marco(esp, marco, resolucion, t_max + 1.0)
+    if forma == "cilindro":
         cols = int(np.pi * diametro / resolucion)
         filas = int(alto / resolucion)
-        esp = cargar_espesores(foto, cols, filas, mat["min"], mat["max"], invertir)
+        return cargar_espesores(foto, cols, filas, t_min, t_max, invertir, encuadre, mejorar)
+    raise ValueError(f"forma desconocida: {forma}")
+
+
+def generar(foto, salida_stl, forma="panel", material="pla", ancho=100.0, diametro=80.0,
+            alto=100.0, resolucion=0.2, marco=3.0, invertir=False, previa=None,
+            encuadre=(0.5, 0.5, 1.0), mejorar=False, t_min=None, t_max=None):
+    """Genera el STL (y opcionalmente la vista previa). Devuelve un resumen."""
+    esp = espesores(foto, forma, material, ancho, diametro, alto, resolucion, marco, invertir,
+                    encuadre, mejorar, t_min, t_max)
+    if forma == "panel":
+        v, caras = panel(esp, ancho + 2 * marco)
+        medidas = f"{ancho + 2 * marco:.0f} x {(ancho + 2 * marco) * esp.shape[0] / esp.shape[1]:.0f} mm"
+    else:
         v, caras = cilindro(esp, diametro, alto)
         medidas = f"Ø{diametro:.0f} x {alto:.0f} mm"
-    else:
-        raise ValueError(f"forma desconocida: {forma}")
     guardar_stl(salida_stl, v, caras)
     if previa:
-        vista_previa(esp, previa, k=mat["k"])
+        vista_previa(esp, previa, k=MATERIALES[material]["k"])
     tri = v[caras]
     volumen_mm3 = abs(np.einsum("ij,ij->i", tri[:, 0], np.cross(tri[:, 1], tri[:, 2])).sum()) / 6
     densidad = 1.27 if material == "petg" else 1.24
@@ -170,32 +235,16 @@ def main():
     p.add_argument("--resolucion", type=float, default=0.2, help="mm por pixel")
     p.add_argument("--invertir", action="store_true")
     p.add_argument("--marco", type=float, default=3.0, help="panel: ancho del marco en mm (0 = sin marco)")
+    p.add_argument("--x", type=float, default=0.5, help="centro del recorte, horizontal (0-1)")
+    p.add_argument("--y", type=float, default=0.5, help="centro del recorte, vertical (0-1)")
+    p.add_argument("--zoom", type=float, default=1.0, help="acercamiento del recorte (1 = toda la foto)")
+    p.add_argument("--mejorar", action="store_true", help="contraste local (CLAHE) para sacar detalle")
     p.add_argument("--previa", help="guardar imagen PNG simulando el litofano encendido")
     p.add_argument("--salida", default="litofano.stl")
     a = p.parse_args()
-    mat = MATERIALES[a.material]
-    a.min = mat["min"] if a.min is None else a.min
-    a.max = mat["max"] if a.max is None else a.max
-
-    if a.forma == "panel":
-        img = Image.open(a.foto)
-        w, h = ImageOps.exif_transpose(img).size
-        cols = int(a.ancho / a.resolucion)
-        filas = int(cols * h / w)
-        esp = cargar_espesores(a.foto, cols, filas, a.min, a.max, a.invertir)
-        esp = con_marco(esp, a.marco, a.resolucion, a.max + 1.0)
-        v, caras = panel(esp, a.ancho + 2 * a.marco)
-    else:
-        cols = int(np.pi * a.diametro / a.resolucion)
-        filas = int(a.alto / a.resolucion)
-        esp = cargar_espesores(a.foto, cols, filas, a.min, a.max, a.invertir)
-        v, caras = cilindro(esp, a.diametro, a.alto)
-
-    guardar_stl(a.salida, v, caras)
-    if a.previa:
-        vista_previa(esp, a.previa, k=mat["k"])
-    print(f"{a.salida}: {len(caras):,} triangulos, {esp.shape[1]}x{esp.shape[0]} px, "
-          f"espesor {esp.min():.2f}-{esp.max():.2f} mm")
+    r = generar(a.foto, a.salida, a.forma, a.material, a.ancho, a.diametro, a.alto, a.resolucion,
+                a.marco, a.invertir, a.previa, (a.x, a.y, a.zoom), a.mejorar, a.min, a.max)
+    print(f"{a.salida}: {r['triangulos']:,} triangulos, {r['medidas']}, ≈ {r['gramos']} g")
 
 
 if __name__ == "__main__":

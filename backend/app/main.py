@@ -2,6 +2,7 @@
 
 Ejecutar:  uvicorn app.main:app --reload   (desde la carpeta backend)
 """
+import io
 import os
 import shutil
 import uuid
@@ -11,10 +12,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from sqlalchemy import inspect, text
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from . import litofano
@@ -64,6 +66,11 @@ class Pedido(SQLModel, table=True):
     ancho: float = 150
     diametro: float = 80
     alto: float = 100
+    # encuadre de la foto: centro del recorte (0-1) y acercamiento (1 = toda la foto)
+    encuadre_x: float = Field(default=0.5, ge=0, le=1)
+    encuadre_y: float = Field(default=0.5, ge=0, le=1)
+    zoom: float = Field(default=1.0, ge=1, le=4)
+    mejorar: bool = True  # contraste local (CLAHE)
     precio: float = 0
     anticipo: float = 0
     estado: Estado = Estado.nuevo
@@ -86,6 +93,10 @@ class PedidoCambios(SQLModel):
     ancho: Optional[float] = None
     diametro: Optional[float] = None
     alto: Optional[float] = None
+    encuadre_x: Optional[float] = Field(default=None, ge=0, le=1)
+    encuadre_y: Optional[float] = Field(default=None, ge=0, le=1)
+    zoom: Optional[float] = Field(default=None, ge=1, le=4)
+    mejorar: Optional[bool] = None
     precio: Optional[float] = None
     anticipo: Optional[float] = None
     estado: Optional[Estado] = None
@@ -107,6 +118,15 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:4200"], allo
 
 
 SQLModel.metadata.create_all(engine)
+
+# columnas agregadas despues de la primera version: se suman a bases de datos existentes
+NUEVAS_COLUMNAS = {"encuadre_x": "FLOAT DEFAULT 0.5", "encuadre_y": "FLOAT DEFAULT 0.5",
+                   "zoom": "FLOAT DEFAULT 1.0", "mejorar": "BOOLEAN DEFAULT 1"}
+with engine.begin() as con:
+    existentes = {c["name"] for c in inspect(con).get_columns("pedido")}
+    for nombre, tipo in NUEVAS_COLUMNAS.items():
+        if nombre not in existentes:
+            con.execute(text(f"ALTER TABLE pedido ADD COLUMN {nombre} {tipo}"))
 
 
 def carpeta(p: Pedido) -> Path:
@@ -165,13 +185,16 @@ def ver(pedido_id: int, s: Session = Depends(sesion)):
     return obtener(s, pedido_id)
 
 
+AJUSTES_FOTO = {"encuadre_x", "encuadre_y", "zoom", "mejorar"}
+
+
 @app.patch("/api/pedidos/{pedido_id}", response_model=Pedido)
 def actualizar(pedido_id: int, cambios: PedidoCambios, s: Session = Depends(sesion)):
     p = obtener(s, pedido_id)
     datos = cambios.model_dump(exclude_unset=True)
     for k, v in datos.items():
         setattr(p, k, v)
-    if {"forma", "material", "ancho", "diametro", "alto"} & datos.keys():
+    if {"forma", "material", "ancho", "diametro", "alto"} & datos.keys() or AJUSTES_FOTO & datos.keys():
         p.stl_listo = False  # cambio de medidas: hay que regenerar
     s.add(p)
     s.commit()
@@ -195,7 +218,7 @@ async def generar(pedido_id: int, s: Session = Depends(sesion)):
     resumen = await run_in_threadpool(
         litofano.generar, str(d / p.foto_nombre), str(stl), forma=p.forma.value,
         material=p.material.value, ancho=p.ancho, diametro=p.diametro, alto=p.alto,
-        previa=str(d / "previa.png"))
+        previa=str(d / "previa.png"), encuadre=(p.encuadre_x, p.encuadre_y, p.zoom), mejorar=p.mejorar)
     with zipfile.ZipFile(d / "litofano.zip", "w", zipfile.ZIP_DEFLATED) as z:
         z.write(stl, f"pedido{p.id}_{p.forma.value}_{p.material.value}.stl")
     stl.unlink()
@@ -222,6 +245,20 @@ def foto(pedido_id: int, s: Session = Depends(sesion)):
 @app.get("/api/pedidos/{pedido_id}/previa")
 def previa(pedido_id: int, s: Session = Depends(sesion)):
     return archivo(obtener(s, pedido_id), "previa.png")
+
+
+@app.get("/api/pedidos/{pedido_id}/ensayo")
+async def ensayo(pedido_id: int, x: float = Query(0.5, ge=0, le=1), y: float = Query(0.5, ge=0, le=1),
+                 zoom: float = Query(1.0, ge=1, le=4), mejorar: bool = True, s: Session = Depends(sesion)):
+    """Vista previa rapida (baja resolucion, sin STL) para probar el encuadre antes de guardarlo."""
+    p = obtener(s, pedido_id)
+    esp = await run_in_threadpool(
+        litofano.espesores, str(carpeta(p) / p.foto_nombre), forma=p.forma.value,
+        material=p.material.value, ancho=p.ancho, diametro=p.diametro, alto=p.alto, resolucion=0.5,
+        encuadre=(x, y, zoom), mejorar=mejorar)
+    buf = io.BytesIO()
+    litofano.vista_previa(esp, buf, k=litofano.MATERIALES[p.material.value]["k"])
+    return Response(buf.getvalue(), media_type="image/png")
 
 
 @app.get("/api/pedidos/{pedido_id}/stl")

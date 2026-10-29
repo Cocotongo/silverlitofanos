@@ -37,6 +37,10 @@ export interface Pedido {
   ancho: number;
   diametro: number;
   alto: number;
+  encuadre_x: number;
+  encuadre_y: number;
+  zoom: number;
+  mejorar: boolean;
   precio: number;
   anticipo: number;
   estado: Estado;
@@ -46,6 +50,13 @@ export interface Pedido {
   stl_listo: boolean;
   gramos: number | null;
   medidas: string;
+}
+
+export interface Encuadre {
+  x: number;
+  y: number;
+  zoom: number;
+  mejorar: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -88,6 +99,11 @@ export class PedidosService {
 
   urlPrevia(id: number, version = 0) {
     return `${this.api}/pedidos/${id}/previa?v=${version}`;
+  }
+
+  urlEnsayo(id: number, a: Encuadre, version = 0) {
+    const q = new HttpParams({ fromObject: { x: a.x, y: a.y, zoom: a.zoom, mejorar: a.mejorar, v: version } });
+    return `${this.api}/pedidos/${id}/ensayo?${q}`;
   }
 
   urlStl(id: number) {
