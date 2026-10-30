@@ -1,0 +1,14 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    volumes:
+      - ./datos:/datos
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
