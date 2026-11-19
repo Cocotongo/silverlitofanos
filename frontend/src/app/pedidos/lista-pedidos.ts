@@ -2,7 +2,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
-import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.service';
+import { lineaUI } from '../lineas/registro';
+import { Pedido, PedidosService } from './pedidos.service';
 
 @Component({
   selector: 'app-lista-pedidos',
@@ -18,8 +19,8 @@ import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.
 
     <div class="filtros">
       <button [class.secundario]="filtro() !== ''" (click)="filtrar('')">Todos</button>
-      @for (e of estados; track e.valor) {
-        <button [class.secundario]="filtro() !== e.valor" (click)="filtrar(e.valor)">{{ e.texto }}</button>
+      @for (e of servicio.pasos(); track e.id) {
+        <button [class.secundario]="filtro() !== e.id" (click)="filtrar(e.id)">{{ e.nombre }}</button>
       }
     </div>
 
@@ -28,17 +29,19 @@ import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.
     <div class="lista">
       @for (p of pedidos(); track p.id) {
         <a class="tarjeta fila" [routerLink]="['/pedidos', p.id]">
-          <img [src]="foto(p.id)" alt="" loading="lazy" />
+          @if (servicio.linea(p.linea)?.archivo?.acepta === 'image/*') {
+            <img [src]="servicio.urlArchivo(p.id)" alt="" loading="lazy" />
+          }
           <div class="info">
             <strong>#{{ p.id }} · {{ p.cliente }}</strong>
-            <small>{{ p.forma === 'panel' ? 'Panel' : 'Cilindro' }} · {{ p.material.toUpperCase() }} · {{ p.canal }}</small>
+            <small>{{ ui(p.linea).subtitulo(p) }} · {{ p.canal }}</small>
             <small>
               Creado {{ p.creado | date: 'd MMM' }}
               @if (p.fecha_entrega) { · Entrega {{ p.fecha_entrega | date: 'd MMM' }} }
             </small>
           </div>
           <div class="derecha">
-            <span class="estado {{ p.estado }}">{{ texto(p.estado) }}</span>
+            <span class="estado {{ p.estado }}">{{ servicio.textoEstado(p) }}</span>
             <span>{{ p.precio | currency: 'MXN' : 'symbol-narrow' }}</span>
           </div>
         </a>
@@ -67,24 +70,23 @@ import { ESTADOS, Estado, Pedido, PedidosService, textoEstado } from './pedidos.
   `,
 })
 export class ListaPedidos {
-  private servicio = inject(PedidosService);
+  servicio = inject(PedidosService);
+  ui = lineaUI;
 
-  estados = ESTADOS;
   pedidos = signal<Pedido[]>([]);
-  filtro = signal<Estado | ''>('');
+  filtro = signal('');
   error = signal('');
   private todos = signal<Pedido[]>([]);
 
-  activos = computed(
-    () => this.todos().filter((p) => !['entregado', 'cancelado'].includes(p.estado)).length,
+  // cuentas por fase general, para que valgan con cualquier linea de producto
+  private fase = (p: Pedido) => this.servicio.paso(p)?.fase;
+  private abiertos = computed(() =>
+    this.todos().filter((p) => !['entregado', 'cancelado'].includes(this.fase(p) ?? '')),
   );
-  porCobrar = computed(() =>
-    this.todos()
-      .filter((p) => p.estado !== 'cancelado' && p.estado !== 'entregado')
-      .reduce((s, p) => s + (p.precio - p.anticipo), 0),
-  );
+  activos = computed(() => this.abiertos().length);
+  porCobrar = computed(() => this.abiertos().reduce((s, p) => s + (p.precio - p.anticipo), 0));
   vendido = computed(() =>
-    this.todos().filter((p) => p.estado === 'entregado').reduce((s, p) => s + p.precio, 0),
+    this.todos().filter((p) => this.fase(p) === 'entregado').reduce((s, p) => s + p.precio, 0),
   );
 
   constructor() {
@@ -97,11 +99,9 @@ export class ListaPedidos {
     });
   }
 
-  filtrar(e: Estado | '') {
+  filtrar(e: string) {
     this.filtro.set(e);
     this.pedidos.set(e ? this.todos().filter((p) => p.estado === e) : this.todos());
   }
 
-  texto = textoEstado;
-  foto = (id: number) => this.servicio.urlFoto(id);
 }
