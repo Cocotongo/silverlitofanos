@@ -14,6 +14,8 @@ from .nucleo.db import engine
 from .nucleo.migracion import iniciar
 
 iniciar(engine)
+for _l in LINEAS.values():
+    _l.migrar(engine)
 
 app = FastAPI(title="SilVer")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:4200"], allow_methods=["*"],

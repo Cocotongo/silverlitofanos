@@ -72,7 +72,7 @@ export class LetreroCampos {
     <app-letrero-campos [valor]="valor()" (cambio)="cambiar($event)" />
     <figure>
       <img [src]="ensayo()" alt="Vista previa del letrero" (error)="sinVista.set(true)" (load)="sinVista.set(false)" />
-      <figcaption>{{ sinVista() ? 'No se pudo dibujar: revisa el texto o la fuente' : 'Vista previa (líneas azules = cortes entre piezas)' }}</figcaption>
+      <figcaption>{{ sinVista() ? 'No se pudo dibujar: revisa el texto o la fuente' : 'Vista previa (azul = cortes y colas de milano)' }}</figcaption>
     </figure>
   `,
   styles: `
@@ -109,7 +109,7 @@ export class LetreroNuevo {
     @let p = pedido();
     <figure>
       <img [src]="p.generado ? '/api/pedidos/' + p.id + '/previa?v=' + version() : ensayo()" alt="Vista previa del letrero" />
-      <figcaption>{{ p.generado ? 'Piezas generadas (líneas azules = cortes)' : 'Vista previa rápida, todavía sin piezas' }}</figcaption>
+      <figcaption>{{ p.generado ? 'Piezas generadas (azul = cortes y colas de milano)' : 'Vista previa rápida, todavía sin piezas' }}</figcaption>
     </figure>
     @if (p.generado) {
       <p class="nota">Piezas: {{ p.resumen['medidas_piezas']?.join(' · ') }} mm</p>

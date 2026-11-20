@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from pydantic import BaseModel, Field as PField
+from sqlalchemy import inspect, text
 from sqlmodel import Field, Session, SQLModel, select
 
 from ...nucleo.db import engine, sesion
@@ -39,6 +40,11 @@ class PerfilLed(SQLModel, table=True):
     colgador_largo: float = Field(default=15.0, gt=0)
     cable_ancho: float = Field(default=10.0, gt=0)
     cable_largo: float = Field(default=8.0, gt=0)
+    cola_largo: float = Field(default=5.0, ge=0)
+    cola_cuello: float = Field(default=4.0, gt=0)
+    cola_cabeza: float = Field(default=6.0, gt=0)
+    cola_holgura: float = Field(default=0.2, ge=0)
+    cola_alto: float = Field(default=25.0, gt=0)
 
     def medidas(self) -> Perfil:
         return Perfil(**{f.name: getattr(self, f.name) for f in fields(Perfil)})
@@ -65,6 +71,11 @@ class PerfilLedDatos(SQLModel):
     colgador_largo: Optional[float] = PField(default=None, gt=0)
     cable_ancho: Optional[float] = PField(default=None, gt=0)
     cable_largo: Optional[float] = PField(default=None, gt=0)
+    cola_largo: Optional[float] = PField(default=None, ge=0)
+    cola_cuello: Optional[float] = PField(default=None, gt=0)
+    cola_cabeza: Optional[float] = PField(default=None, gt=0)
+    cola_holgura: Optional[float] = PField(default=None, ge=0)
+    cola_alto: Optional[float] = PField(default=None, gt=0)
 
 
 class ConfigLetrero(BaseModel):
@@ -182,6 +193,14 @@ class Letrero(Linea):
         if c["fuente"] not in generador.fuentes():
             raise HTTPException(422, f"Fuente desconocida: {c['fuente']}")
         return c
+
+    def migrar(self, engine):
+        """Agrega a perfil_led las medidas nuevas (con su valor por defecto) si la tabla es de antes."""
+        with engine.begin() as con:
+            existentes = {c["name"] for c in inspect(con).get_columns("perfil_led")}
+            for campo, info in PerfilLed.model_fields.items():
+                if campo not in existentes and isinstance(info.default, float):
+                    con.execute(text(f"ALTER TABLE perfil_led ADD COLUMN {campo} FLOAT DEFAULT {info.default}"))
 
     def generar(self, pedido: Pedido, carpeta: Path) -> dict:
         c = ConfigLetrero(**pedido.config)

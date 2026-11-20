@@ -53,6 +53,9 @@ class Linea:
     def acepta_archivo(self, nombre: str, tipo: str) -> bool:
         return True
 
+    def migrar(self, engine) -> None:
+        """Ajustes de base de datos propios de la linea (se corre al arrancar, despues de crear tablas)."""
+
     def generar(self, pedido: Pedido, carpeta: Path) -> dict[str, Any]:
         """Crea los archivos de produccion en la carpeta del pedido y devuelve un resumen."""
         raise NotImplementedError

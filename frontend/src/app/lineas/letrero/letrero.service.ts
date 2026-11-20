@@ -30,6 +30,11 @@ export interface PerfilLed {
   colgador_largo: number;
   cable_ancho: number;
   cable_largo: number;
+  cola_largo: number;
+  cola_cuello: number;
+  cola_cabeza: number;
+  cola_holgura: number;
+  cola_alto: number;
 }
 
 /** Campos del perfil agrupados para la pantalla de edición. */
@@ -69,6 +74,16 @@ export const CAMPOS_PERFIL: { grupo: string; campos: { id: keyof PerfilLed; text
       { id: 'colgador_largo', texto: 'Colgador: largo' },
       { id: 'cable_ancho', texto: 'Salida de cable: ancho' },
       { id: 'cable_largo', texto: 'Salida de cable: largo' },
+    ],
+  },
+  {
+    grupo: 'Unión entre piezas (cola de milano)',
+    campos: [
+      { id: 'cola_largo', texto: 'Largo (0 = sin cola)' },
+      { id: 'cola_cuello', texto: 'Ancho en el corte' },
+      { id: 'cola_cabeza', texto: 'Ancho al fondo' },
+      { id: 'cola_holgura', texto: 'Holgura por lado' },
+      { id: 'cola_alto', texto: 'Alto desde atrás' },
     ],
   },
 ];

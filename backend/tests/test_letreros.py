@@ -71,3 +71,33 @@ def test_geometria():
 def test_tira_mas_ancha_avisa():
     ancha = generador.Perfil(ancho_tira=20)
     assert generador.disenar("Hola", "Pacifico-Regular", 60, ancha)["advertencias"]
+
+
+def test_colas_de_milano_embonan():
+    p = generador.Perfil()
+    d = generador.disenar("Pretty Cutters", "Lobster-Regular", 120, p)
+    piezas = generador.construir(d, p)
+    for (a, ta), (b, tb) in zip(zip(piezas, d["piezas"]), zip(piezas[1:], d["piezas"][1:])):
+        if ta["palabra"] is not tb["palabra"]:
+            continue
+        # cada union lleva al menos una cola y las piezas no chocan entre si
+        assert not (ta["machos"].is_empty and tb["machos"].is_empty)
+        assert (a["carcasa"] ^ b["carcasa"]).volume() < 0.01
+    sin = generador.Perfil(cola_largo=0)
+    assert all(t.get("machos") is None or t["machos"].is_empty
+               for t in generador.disenar("Pretty Cutters", "Lobster-Regular", 120, sin)["piezas"])
+
+
+def test_migra_perfiles_viejos():
+    from sqlalchemy import create_engine, inspect, text
+
+    from app.lineas.letrero import Letrero
+
+    engine = create_engine(f"sqlite:///{tempfile.mkdtemp()}/v.db")
+    with engine.begin() as con:
+        con.execute(text("CREATE TABLE perfil_led (id INTEGER PRIMARY KEY, nombre VARCHAR, ancho_tira FLOAT)"))
+        con.execute(text("INSERT INTO perfil_led VALUES (1, 'viejo', 10)"))
+    Letrero().migrar(engine)
+    with engine.connect() as con:
+        assert "cola_largo" in {c["name"] for c in inspect(con).get_columns("perfil_led")}
+        assert con.execute(text("SELECT cola_holgura FROM perfil_led")).scalar() == 0.2

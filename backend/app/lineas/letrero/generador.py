@@ -47,6 +47,12 @@ class Perfil:
     colgador_largo: float = 15.0
     cable_ancho: float = 10.0
     cable_largo: float = 8.0
+    # union entre piezas: cola de milano (macho en la pieza izquierda, hembra en la derecha)
+    cola_largo: float = 5.0        # cuanto entra en la otra pieza (0 = sin cola de milano)
+    cola_cuello: float = 4.0       # ancho en la linea del corte
+    cola_cabeza: float = 6.0       # ancho al fondo
+    cola_holgura: float = 0.2      # juego por lado entre macho y hembra
+    cola_alto: float = 25.0        # desde la parte de atras; no llega al frente para que no se vea
 
     @property
     def ancho_minimo(self) -> float:
@@ -247,10 +253,66 @@ def disenar(texto: str, fuente: str, altura: float, p: Perfil) -> dict:
             caja = box(xa + ga, b[1] - 1, xb - gb, b[3] + 1)
             trozos.append({"caja": caja, "contorno": w["contorno"].intersection(caja)})
         trozos[-1]["cable"] = True
+        for izq, der in zip(trozos, trozos[1:]):
+            ci, cd, n = _colas(w, izq["caja"].bounds[2], der["caja"].bounds[0], p)
+            for t, c in ((izq, ci), (der, cd)):
+                t["machos"] = unary_union([t.get("machos", Polygon()), c["machos"]])
+                t["hembras"] = unary_union([t.get("hembras", Polygon()), c["hembras"]])
+            if n == 0 and p.cola_largo > 0:
+                advertencias.append("Hay un corte sin espacio para cola de milano; esa unión va solo pegada")
         for t in trozos:
             t.update(palabra=w)
         piezas.extend(trozos)
     return {"palabras": palabras, "piezas": piezas, "advertencias": list(dict.fromkeys(advertencias))}
+
+
+def _colas(w, xa, xb, p: Perfil):
+    """Colas de milano en cada tramo de pared que cruza el corte entre xa (pieza izq.) y xb (der.).
+
+    Devuelve, para la pieza izquierda y la derecha, sus machos y hembras en 2D, y cuantas colas caben.
+    """
+    vacio = {"machos": Polygon(), "hembras": Polygon()}
+    if p.cola_largo <= 0:
+        return vacio, dict(vacio), 0
+    x = (xa + xb) / 2
+    # bajo el asiento de la cubierta la pared es el contorno menos el canal (y los tuneles abajo)
+    hueco = unary_union([w["canal"], w["tuneles"]]).buffer(0.8)
+    pared = w["contorno"].difference(hueco)
+    b = w["contorno"].bounds
+    linea = LineString([(x, b[1] - 1), (x, b[3] + 1)]).intersection(pared)
+    machos, hembras = [], []
+    lado_der = box(xb, b[1] - 1, xb + 100, b[3] + 1)
+    lado_izq = box(xa - 100, b[1] - 1, xa, b[3] + 1)
+    for seg in (linea.geoms if hasattr(linea, "geoms") else [linea]):
+        margen = p.cola_cabeza / 2 + p.cola_holgura + 0.2
+        if seg.is_empty or seg.length < 2 * margen:
+            continue
+        lo, hi = seg.bounds[1] + margen, seg.bounds[3] - margen
+        medio = (lo + hi) / 2
+        # prueba posiciones desde el centro del tramo, y el macho hacia la derecha o hacia la izquierda
+        for yc in sorted(np.arange(lo, hi + 0.01, 0.5), key=lambda y: abs(y - medio)):
+            hecho = False
+            for sentido in (1, -1):
+                punta = x + sentido * p.cola_largo
+                cola = Polygon([(x, yc - p.cola_cuello / 2), (punta, yc - p.cola_cabeza / 2),
+                                (punta, yc + p.cola_cabeza / 2), (x, yc + p.cola_cuello / 2)])
+                hembra = cola.buffer(p.cola_holgura, join_style="mitre")
+                destino, origen = (lado_der, lado_izq) if sentido == 1 else (lado_izq, lado_der)
+                # la hembra tiene que quedar rodeada de pared en la otra pieza
+                if not pared.buffer(-0.2).contains(hembra.intersection(destino)):
+                    continue
+                borde = xa if sentido == 1 else xb
+                cuello = box(min(borde, x) - 0.5, yc - p.cola_cuello / 2, max(borde, x) + 0.5, yc + p.cola_cuello / 2)
+                machos.append((sentido, unary_union([cola, cuello]).buffer(0)))
+                hembras.append((sentido, hembra.intersection(destino.buffer(0.01))))
+                hecho = True
+                break
+            if hecho:
+                break
+    # sentido 1: macho en la pieza izquierda; -1: macho en la derecha
+    return ({"machos": unary_union([m for s, m in machos if s == 1]), "hembras": unary_union([h for s, h in hembras if s == -1])},
+            {"machos": unary_union([m for s, m in machos if s == -1]), "hembras": unary_union([h for s, h in hembras if s == 1])},
+            len(machos))
 
 
 def _cable(canal, pieza, p: Perfil):
@@ -287,7 +349,11 @@ def construir(d: dict, p: Perfil):
                   _prisma(_colgador(contorno, p), -1, p.base + 0.01)]
         if t.get("cable"):
             huecos.append(_prisma(_cable(w["canal"], caja, p), -1, p.base + 0.01))
+        if t.get("hembras") is not None and not t["hembras"].is_empty:
+            huecos.append(_prisma(t["hembras"], -1, p.cola_alto + p.cola_holgura))
         carcasa = carcasa - Manifold.batch_boolean([h for h in huecos if not h.is_empty()], OpType.Add)
+        if t.get("machos") is not None and not t["machos"].is_empty:
+            carcasa = carcasa + _prisma(t["machos"], 0, p.cola_alto)
         ext = w["canal"].buffer(p.escalon - p.tapa_holgura)
         inter = w["canal"].buffer(p.escalon - p.tapa_holgura - p.tapa_pared)
         cubierta = (_prisma(ext.intersection(caja), p.fondo_canal, p.profundidad)
@@ -297,7 +363,7 @@ def construir(d: dict, p: Perfil):
 
 
 def vista_previa(d: dict, ruta, escala=2.0):
-    """Vista de frente: canal encendido, contorno y lineas de corte."""
+    """Vista de frente: canal encendido, contorno, cortes y colas de milano."""
     todo = unary_union([w["contorno"] for w in d["palabras"]])
     x0, y0, x1, y1 = todo.bounds
     m = 20
@@ -317,9 +383,13 @@ def vista_previa(d: dict, ruta, escala=2.0):
         pinta(w["canal"].buffer(2), (255, 190, 120))  # brillo
         pinta(w["canal"], (255, 238, 210))
         pinta(w["tuneles"].difference(w["canal"]), (130, 110, 90))
-    for t in d["piezas"][:-1]:
+    for t, sig in zip(d["piezas"], d["piezas"][1:]):
+        if t["palabra"] is not sig["palabra"]:
+            continue
         x = t["caja"].bounds[2]
         dib.line(tx([(x, y0 - 3), (x, y1 + 3)]), fill=(90, 160, 255), width=2)
+        if t.get("machos") is not None:
+            pinta(t["machos"], (90, 160, 255))
     img.save(ruta, "PNG")
 
 
