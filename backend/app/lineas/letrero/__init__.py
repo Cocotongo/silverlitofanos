@@ -158,6 +158,29 @@ async def ensayo(texto: str = Query(..., min_length=1, max_length=80), fuente: s
     return Response(png, media_type="image/png")
 
 
+@router.get("/perfiles/{perfil_id}/prueba-union")
+async def prueba_union(perfil_id: int, texto: str = Query("Pretty Cutters", min_length=1, max_length=80),
+                       fuente: str = "Lobster-Regular", altura: float = Query(120, gt=10, le=400),
+                       holguras: str = "0.15,0.2,0.3", corte: int = Query(1, ge=1),
+                       s: Session = Depends(sesion)):
+    """ZIP con solo la union entre dos piezas, un par por holgura, para calibrar la cola de milano."""
+    p = s.get(PerfilLed, perfil_id)
+    if not p:
+        raise HTTPException(404, "Perfil no encontrado")
+    try:
+        lista = [float(h) for h in holguras.split(",") if h.strip()]
+    except ValueError:
+        raise HTTPException(422, "Las holguras van separadas por coma, por ejemplo 0.15,0.2,0.3")
+    if not 1 <= len(lista) <= 5 or any(not 0 <= h <= 1 for h in lista):
+        raise HTTPException(422, "Pon de 1 a 5 holguras, cada una entre 0 y 1 mm")
+    try:
+        datos = await run_in_threadpool(generador.prueba_union_zip, texto, fuente, altura, p.medidas(), lista, corte)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return Response(datos, media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="prueba-union.zip"'})
+
+
 class Letrero(Linea):
     id = "letrero"
     nombre = "Letreros LED"

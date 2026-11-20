@@ -101,3 +101,19 @@ def test_migra_perfiles_viejos():
     with engine.connect() as con:
         assert "cola_largo" in {c["name"] for c in inspect(con).get_columns("perfil_led")}
         assert con.execute(text("SELECT cola_holgura FROM perfil_led")).scalar() == 0.2
+
+
+def test_prueba_de_union():
+    r = generador.prueba_union("Pretty Cutters", "Lobster-Regular", 120, generador.Perfil(), (0.15, 0.3))
+    assert r["colas"] >= 1 and len(r["pares"]) == 2
+    for par in r["pares"]:
+        for m in (par["izq"], par["der"]):
+            assert m.status().name == "NoError" and m.volume() > 0 and len(m.decompose()) == 1
+            assert m.bounding_box()[5] <= 28.01
+        assert (par["izq"] ^ par["der"]).volume() < 1e-3  # las piezas no chocan
+    pid = cliente.get("/api/lineas/letrero/perfiles").json()[0]["id"]
+    z = cliente.get(f"/api/lineas/letrero/perfiles/{pid}/prueba-union", params={"holguras": "0.2"})
+    assert z.status_code == 200
+    nombres = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
+    assert "LEEME.txt" in nombres and len([n for n in nombres if n.endswith(".stl")]) == 2
+    assert cliente.get(f"/api/lineas/letrero/perfiles/{pid}/prueba-union", params={"holguras": "x"}).status_code == 422

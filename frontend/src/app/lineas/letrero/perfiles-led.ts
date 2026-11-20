@@ -36,6 +36,17 @@ import { CAMPOS_PERFIL, LetreroService, PerfilLed } from './letrero.service';
             }
           </div>
         }
+        @if (p.id) {
+          <div class="prueba">
+            <div>
+              <label>Pieza de prueba: holguras de cola a probar (mm, separadas por coma)</label>
+              <input name="holguras" [(ngModel)]="holguras" />
+            </div>
+            <a class="boton" [href]="urlPrueba(p.id)" download>Descargar unión de prueba</a>
+          </div>
+          <p class="nota">Recorta solo la unión entre las dos primeras piezas de «Pretty Cutters» (Lobster, 120 mm), un par
+            por holgura. Atrás llevan 1, 2, 3… puntos para saber cuál es cuál. La que entre justa a mano va en «Holgura por lado».</p>
+        }
         @if (mensaje()) { <p [class.error]="esError()" class="nota">{{ mensaje() }}</p> }
         <div class="acciones">
           <button type="submit">{{ p.id ? 'Guardar cambios' : 'Crear perfil' }}</button>
@@ -55,6 +66,8 @@ import { CAMPOS_PERFIL, LetreroService, PerfilLed } from './letrero.service';
     .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
     .doble { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .acciones { display: flex; gap: 8px; }
+    .prueba { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .prueba > div { flex: 1; min-width: 220px; }
     @media (max-width: 560px) { .doble { grid-template-columns: 1fr; } }
   `,
 })
@@ -65,6 +78,7 @@ export class PerfilesLed {
   actual = signal<PerfilLed | null>(null);
   mensaje = signal('');
   esError = signal(false);
+  holguras = '0.15,0.2,0.3';
 
   constructor() {
     this.cargar();
@@ -105,6 +119,10 @@ export class PerfilesLed {
   borrar(p: PerfilLed) {
     if (!confirm(`¿Borrar el perfil «${p.nombre}»?`)) return;
     this.servicio.borrarPerfil(p.id).subscribe(() => this.cargar());
+  }
+
+  urlPrueba(id: number) {
+    return this.servicio.urlPruebaUnion(id, this.holguras);
   }
 
   private avisar(texto: string, error: boolean) {

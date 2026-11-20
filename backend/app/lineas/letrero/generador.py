@@ -418,3 +418,75 @@ def ensayo_png(texto: str, fuente: str, altura: float, perfil: Perfil) -> bytes:
     buf = io.BytesIO()
     vista_previa(disenar(texto, fuente, altura, perfil), buf, escala=1.0)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------- pieza de prueba de la union
+
+def _marcas(piso, n, evitar, diam=2.5):
+    """Hasta `n` puntos dentro de `piso`, lejos de `evitar`, para grabar cuantas marcas lleva la prueba."""
+    zona = piso.buffer(-diam).difference(evitar.buffer(diam))
+    puntos = []
+    for q in sorted(_poligonos(zona), key=lambda q: -q.area):
+        b = q.bounds
+        for y in np.arange(b[1], b[3], 0.5):
+            for x in np.arange(b[0], b[2], 0.5):
+                c = Point(x, y)
+                if q.contains(c) and all(c.distance(o) >= diam * 1.8 for o in puntos):
+                    puntos.append(c)
+                    if len(puntos) == n:
+                        return unary_union([o.buffer(diam / 2) for o in puntos])
+    return unary_union([o.buffer(diam / 2) for o in puntos]) if puntos else Polygon()
+
+
+def prueba_union(texto: str, fuente: str, altura: float, perfil: Perfil,
+                 holguras=(0.15, 0.2, 0.3), corte: int = 1, ventana: float = 20.0) -> dict:
+    """Recorta solo la union entre la pieza `corte` y la siguiente, para calibrar la cola de milano.
+
+    Genera un par (izquierda/derecha) por cada holgura de cola. Cada pieza va recortada a `ventana` mm
+    a cada lado del corte y a la altura de la cola + 3 mm, para que imprima rapido y con poco material.
+    Atras (en el piso) lleva 1, 2, 3... puntos grabados para saber cual holgura es cual.
+    """
+    pares = []
+    for k, h in enumerate(holguras, 1):
+        p = Perfil(**{**asdict(perfil), "cola_holgura": h})
+        d = disenar(texto, fuente, altura, p)
+        piezas = d["piezas"]
+        if corte < 1 or corte >= len(piezas) or piezas[corte - 1]["palabra"] is not piezas[corte]["palabra"]:
+            raise ValueError("Ese corte no existe o separa dos palabras (ahí no hay cola de milano)")
+        izq, der = piezas[corte - 1], piezas[corte]
+        x = (izq["caja"].bounds[2] + der["caja"].bounds[0]) / 2
+        par = construir({"piezas": [izq, der]}, p)
+        z1 = min(p.cola_alto + 3, p.profundidad)
+        caja = box(x - ventana, -1e4, x + ventana, 1e4)
+        recorte = _prisma(caja, -1, z1)
+        lado = []
+        for t, pz in zip((izq, der), par):
+            m = pz["carcasa"] ^ recorte
+            piso = t["contorno"].intersection(caja)
+            evitar = unary_union([t.get("hembras") or Polygon(), t.get("machos") or Polygon(),
+                                  t["palabra"]["canal"], box(x - 3, -1e4, x + 3, 1e4)])
+            puntos = _marcas(piso.difference(t["palabra"]["canal"].buffer(0.5)), k, evitar)
+            m = m - _prisma(puntos, -1, 0.4)
+            lado.append(m)
+        pares.append({"holgura": h, "izq": lado[0], "der": lado[1], "x": x})
+    return {"pares": pares, "colas": len(_poligonos(izq.get("machos") or Polygon())) + len(_poligonos(der.get("machos") or Polygon()))}
+
+
+def prueba_union_zip(texto: str, fuente: str, altura: float, perfil: Perfil, holguras=(0.15, 0.2, 0.3),
+                     corte: int = 1) -> bytes:
+    r = prueba_union(texto, fuente, altura, perfil, holguras, corte)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for k, par in enumerate(r["pares"], 1):
+            nombre = f"{k}punto{'s' if k > 1 else ''}_holgura_{par['holgura']:.2f}".replace(".", "_")
+            z.writestr(f"{nombre}_izquierda.stl", stl_bytes(par["izq"]))
+            z.writestr(f"{nombre}_derecha.stl", stl_bytes(par["der"]))
+        z.writestr("LEEME.txt", (
+            f"Prueba de union «{texto}» ({fuente}, {altura:g} mm), corte {corte}.\n"
+            "Cada par trae puntos grabados atras: 1 punto = primera holgura, 2 = segunda, etc.\n"
+            + "\n".join(f"{k} punto(s): holgura de cola {par['holgura']:g} mm por lado"
+                        for k, par in enumerate(r["pares"], 1))
+            + "\nImprime con el mismo filamento y perfil del letrero. Desliza una pieza sobre la otra desde atras:\n"
+            "debe entrar con presion de la mano, sin martillo, y no tener juego al jalar de frente.\n"
+            "Pon en el perfil LED la holgura que mejor quede (campo cola_holgura).\n"))
+    return buf.getvalue()

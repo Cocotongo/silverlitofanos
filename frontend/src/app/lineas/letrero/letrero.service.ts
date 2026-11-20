@@ -113,6 +113,11 @@ export class LetreroService {
     return this.http.delete<void>(`${this.api}/perfiles/${id}`);
   }
 
+  urlPruebaUnion(perfilId: number, holguras: string) {
+    const q = new HttpParams().set('holguras', holguras);
+    return `${this.api}/perfiles/${perfilId}/prueba-union?${q}`;
+  }
+
   urlEnsayo(c: Partial<ConfigLetrero>) {
     let q = new HttpParams().set('texto', c.texto || ' ').set('fuente', c.fuente ?? '').set('altura', c.altura ?? 120);
     if (c.perfil_id) q = q.set('perfil_id', c.perfil_id);
