@@ -3,13 +3,14 @@ import { CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
+import { LetreroCampos, LetreroVista } from '../lineas/letrero/letrero';
 import { LitofanoCampos, LitofanoVista } from '../lineas/litofano/litofano';
 import { lineaUI } from '../lineas/registro';
 import { Pedido, PedidoCambios, PedidosService } from './pedidos.service';
 
 @Component({
   selector: 'app-detalle-pedido',
-  imports: [CurrencyPipe, DatePipe, FormsModule, RouterLink, LitofanoVista, LitofanoCampos],
+  imports: [CurrencyPipe, DatePipe, FormsModule, RouterLink, LitofanoVista, LitofanoCampos, LetreroVista, LetreroCampos],
   template: `
     <a routerLink="/pedidos">← Pedidos</a>
     @if (pedido(); as p) {
@@ -23,6 +24,9 @@ import { Pedido, PedidoCambios, PedidosService } from './pedidos.service';
           @switch (p.linea) {
             @case ('litofano') {
               <app-litofano-vista [pedido]="$any(p)" [version]="version()" (cambio)="cambiarConfig($event)" />
+            }
+            @case ('letrero') {
+              <app-letrero-vista [pedido]="$any(p)" [version]="version()" />
             }
             @default {
               @if (p.generado) {
@@ -57,6 +61,7 @@ import { Pedido, PedidoCambios, PedidosService } from './pedidos.service';
           </div>
           @switch (p.linea) {
             @case ('litofano') { <app-litofano-campos [pedido]="$any(p)" (cambio)="cambiarConfig($event)" /> }
+            @case ('letrero') { <app-letrero-campos [valor]="$any(p.config)" (cambio)="cambiarConfig($event)" /> }
           }
           <div class="doble">
             <div><label>Precio</label>
@@ -151,9 +156,10 @@ export class DetallePedido {
         this.version.update((v) => v + 1);
         this.generando.set(false);
       },
-      error: () => {
+      error: (e) => {
         this.generando.set(false);
-        this.error.set('No se pudieron generar los archivos.');
+        const detalle = e.error?.detail;
+        this.error.set(typeof detalle === 'string' ? detalle : 'No se pudieron generar los archivos.');
       },
     });
   }

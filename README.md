@@ -14,6 +14,11 @@ SilVer está separado en un **núcleo** común y **líneas de producto**:
 
 Para agregar una línea (por ejemplo letreros LED): crea `backend/app/lineas/letreros/` con una clase que herede de `Linea` (ver `lineas/base.py`), regístrala en `lineas/__init__.py`, y agrega sus textos en `frontend/src/app/lineas/registro.ts` y sus componentes en los `@switch` de `pedidos/`.
 
+### Letreros LED (`lineas/letrero/`)
+Del texto, la fuente y el alto de letra salen las piezas listas para imprimir: carcasa (canal para la tira, pared, piso con colgador) y cubierta difusora por pieza. El letrero se corta solo en piezas que caben en la cama; donde el canal cruza el corte el LED pasa por ahí, y donde dos letras solo se tocan por la pared se abre un túnel en el piso.
+
+Todas las medidas (ancho de tira, holgura, alto del túnel, pared, cubierta, holgura entre piezas, tamaño máximo de pieza…) viven en **Perfiles LED** (menú superior), uno por tira o proveedor. El pedido elige su perfil y las medidas usadas quedan en `perfil.txt` dentro del ZIP. Las fuentes están en `backend/app/lineas/letrero/fuentes/` (Pacifico y Lobster, licencia OFL): para agregar otra, copia ahí su `.ttf`.
+
 Al arrancar, la base de datos de la versión anterior se pasa sola al formato nuevo (los pedidos existentes quedan como litofanos).
 
 ## Requisitos (Windows)

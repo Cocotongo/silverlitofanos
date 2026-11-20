@@ -3,12 +3,13 @@ import { CurrencyPipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
+import { LetreroNuevo } from '../lineas/letrero/letrero';
 import { LitofanoNuevo } from '../lineas/litofano/litofano';
 import { PedidosService } from './pedidos.service';
 
 @Component({
   selector: 'app-nuevo-pedido',
-  imports: [ReactiveFormsModule, CurrencyPipe, LitofanoNuevo],
+  imports: [ReactiveFormsModule, CurrencyPipe, LitofanoNuevo, LetreroNuevo],
   template: `
     <h1>Nuevo pedido</h1>
     <form class="tarjeta rejilla" [formGroup]="form" (ngSubmit)="guardar()">
@@ -26,6 +27,10 @@ import { PedidosService } from './pedidos.service';
             <input type="file" [accept]="a.acepta" (change)="elegirArchivo($event)" hidden />
           </label>
         </div>
+      } @else {
+        @switch (linea()?.id) {
+          @case ('letrero') { <app-letrero-nuevo [base]="$any(producto()?.config)" (config)="config.set($event)" /> }
+        }
       }
 
       <div class="campos">
@@ -102,6 +107,7 @@ export class NuevoPedido {
   // el valor del producto es "linea/producto"
   private eleccion = signal(this.form.controls.producto.value);
   linea = computed(() => this.servicio.linea(this.eleccion().split('/')[0]));
+  producto = computed(() => this.linea()?.productos.find((p) => p.id === this.eleccion().split('/')[1]));
   private archivoElegido = signal(false);
   faltaArchivo = computed(() => !!this.linea()?.archivo?.requerido && !this.archivoElegido());
 

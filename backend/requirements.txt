@@ -4,3 +4,6 @@ sqlmodel>=0.0.22
 python-multipart>=0.0.9
 numpy>=2.0
 pillow>=10.0
+shapely>=2.0
+fonttools>=4.50
+manifold3d>=3.0
