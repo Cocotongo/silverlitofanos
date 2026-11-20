@@ -1,74 +1,80 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 
-export type Estado =
-  | 'nuevo' | 'previa_enviada' | 'aprobado' | 'imprimiendo' | 'listo' | 'entregado' | 'cancelado';
+/** Fases generales, comunes a todas las líneas de producto. */
+export type Fase = 'nuevo' | 'diseno' | 'aprobado' | 'produccion' | 'listo' | 'entregado' | 'cancelado';
 
-export const ESTADOS: { valor: Estado; texto: string }[] = [
-  { valor: 'nuevo', texto: 'Nuevo' },
-  { valor: 'previa_enviada', texto: 'Vista previa enviada' },
-  { valor: 'aprobado', texto: 'Aprobado' },
-  { valor: 'imprimiendo', texto: 'Imprimiendo' },
-  { valor: 'listo', texto: 'Listo para entregar' },
-  { valor: 'entregado', texto: 'Entregado' },
-  { valor: 'cancelado', texto: 'Cancelado' },
-];
-
-export const textoEstado = (e: Estado) => ESTADOS.find((x) => x.valor === e)?.texto ?? e;
+export interface Paso {
+  id: string;
+  nombre: string;
+  fase: Fase;
+}
 
 export interface Producto {
   id: string;
   nombre: string;
-  forma: 'panel' | 'cilindro';
   precio: number;
-  ancho?: number;
-  diametro?: number;
-  alto?: number;
+  config: Record<string, unknown>;
 }
 
-export interface Pedido {
+export interface Linea {
+  id: string;
+  nombre: string;
+  productos: Producto[];
+  flujo: Paso[];
+  archivo: { etiqueta: string; acepta: string; requerido: boolean } | null;
+}
+
+export interface Pedido<C = Record<string, any>> {
   id: number;
+  linea: string;
   cliente: string;
   telefono: string;
   canal: string;
   producto: string;
-  forma: 'panel' | 'cilindro';
-  material: 'pla' | 'petg';
-  ancho: number;
-  diametro: number;
-  alto: number;
-  encuadre_x: number;
-  encuadre_y: number;
-  zoom: number;
-  mejorar: boolean;
   precio: number;
   anticipo: number;
-  estado: Estado;
+  estado: string;
   notas: string;
   fecha_entrega: string | null;
   creado: string;
-  stl_listo: boolean;
-  gramos: number | null;
-  medidas: string;
+  archivo: string;
+  config: C;
+  generado: boolean;
+  resumen: Record<string, any>;
 }
 
-export interface Encuadre {
-  x: number;
-  y: number;
-  zoom: number;
-  mejorar: boolean;
-}
+export type PedidoCambios = Partial<Omit<Pedido, 'config'>> & { config?: Record<string, unknown> };
 
 @Injectable({ providedIn: 'root' })
 export class PedidosService {
   private http = inject(HttpClient);
   private api = '/api';
 
-  productos() {
-    return this.http.get<Producto[]>(`${this.api}/productos`);
+  /** Líneas de producto con su catálogo y su flujo de pasos. */
+  lineas = toSignal(this.http.get<Linea[]>(`${this.api}/lineas`), { initialValue: [] });
+
+  /** Todos los pasos de todas las líneas, sin repetir (para filtros). */
+  pasos = computed(() => {
+    const vistos = new Map<string, Paso>();
+    for (const l of this.lineas()) for (const p of l.flujo) if (!vistos.has(p.id)) vistos.set(p.id, p);
+    return [...vistos.values()];
+  });
+
+  linea(id: string) {
+    return this.lineas().find((l) => l.id === id);
   }
 
-  listar(estado?: Estado | '') {
+  paso(pedido: Pick<Pedido, 'linea' | 'estado'>) {
+    return this.linea(pedido.linea)?.flujo.find((p) => p.id === pedido.estado);
+  }
+
+  textoEstado(pedido: Pick<Pedido, 'linea' | 'estado'>) {
+    return this.paso(pedido)?.nombre ?? pedido.estado;
+  }
+
+  listar(estado?: string) {
     const params = estado ? new HttpParams().set('estado', estado) : undefined;
     return this.http.get<Pedido[]>(`${this.api}/pedidos`, { params });
   }
@@ -81,7 +87,7 @@ export class PedidosService {
     return this.http.post<Pedido>(`${this.api}/pedidos`, datos);
   }
 
-  actualizar(id: number, cambios: Partial<Pedido>) {
+  actualizar(id: number, cambios: PedidoCambios) {
     return this.http.patch<Pedido>(`${this.api}/pedidos/${id}`, cambios);
   }
 
@@ -93,20 +99,15 @@ export class PedidosService {
     return this.http.post<Pedido>(`${this.api}/pedidos/${id}/generar`, {});
   }
 
-  urlFoto(id: number) {
-    return `${this.api}/pedidos/${id}/foto`;
+  urlArchivo(id: number) {
+    return `${this.api}/pedidos/${id}/archivo`;
   }
 
   urlPrevia(id: number, version = 0) {
     return `${this.api}/pedidos/${id}/previa?v=${version}`;
   }
 
-  urlEnsayo(id: number, a: Encuadre, version = 0) {
-    const q = new HttpParams({ fromObject: { x: a.x, y: a.y, zoom: a.zoom, mejorar: a.mejorar, v: version } });
-    return `${this.api}/pedidos/${id}/ensayo?${q}`;
-  }
-
-  urlStl(id: number) {
-    return `${this.api}/pedidos/${id}/stl`;
+  urlDescarga(id: number) {
+    return `${this.api}/pedidos/${id}/descarga`;
   }
 }

@@ -3,3 +3,6 @@
 .marca { font-weight: 700; font-size: 1.2rem; color: var(--texto); text-decoration: none; }
 .marca span { color: var(--acento); }
 main { max-width: 1000px; margin: 0 auto; padding: 20px 16px; }
+.barra nav { display: flex; align-items: center; gap: 14px; }
+.enlace { color: var(--suave); text-decoration: none; font-size: .9rem; }
+.enlace:hover { color: var(--acento); }
