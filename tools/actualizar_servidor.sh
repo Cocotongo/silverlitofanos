@@ -4,7 +4,7 @@
 # Si la rama remota tiene commits nuevos: git pull --ff-only y
 # docker compose up -d --build. Si no, sale sin hacer nada.
 # Pensado para cron cada 5 minutos:
-#   */5 * * * * /ruta/a/silverlitofanos/tools/actualizar_servidor.sh >> /var/log/silver-actualizar.log 2>&1
+#   */5 * * * * /ruta/a/silverlitofanos/tools/actualizar_servidor.sh >> $HOME/silver-actualizar.log 2>&1
 #
 # Los pedidos y archivos viven en ./datos (volumen del compose), así que no se tocan.
 set -euo pipefail
