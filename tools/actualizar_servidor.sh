@@ -29,13 +29,18 @@ fi
     local_sha="$(git rev-parse HEAD)"
     remoto_sha="$(git rev-parse "origin/$RAMA")"
 
-    if [[ "$local_sha" == "$remoto_sha" ]]; then
+    # También reconstruye si version.json falta o no es del commit actual.
+    if [[ "$local_sha" == "$remoto_sha" ]] && grep -q "\"${local_sha:0:7}\"" backend/version.json 2>/dev/null; then
       exit 0
     fi
 
     echo "$(date '+%F %T') ${local_sha:0:7} -> ${remoto_sha:0:7}: actualizando"
     git checkout --quiet "$RAMA"
     git pull --ff-only --quiet origin "$RAMA"
+    # La imagen no lleva .git: la versión que muestra la app va en version.json.
+    printf '{"version": %s, "commit": "%s", "fecha": "%s"}\n' \
+      "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)" \
+      "$(git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M')" > backend/version.json
     docker compose up -d --build
     docker image prune -f >/dev/null
     echo "$(date '+%F %T') listo: $(git log -1 --format='%h %s')"

@@ -6,3 +6,4 @@ main { max-width: 1000px; margin: 0 auto; padding: 20px 16px; }
 .barra nav { display: flex; align-items: center; gap: 14px; }
 .enlace { color: var(--suave); text-decoration: none; font-size: .9rem; }
 .enlace:hover { color: var(--acento); }
+.version { color: var(--suave); font-size: .75rem; white-space: nowrap; }

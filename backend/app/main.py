@@ -12,6 +12,7 @@ from .lineas import LINEAS
 from .nucleo import pedidos
 from .nucleo.db import engine
 from .nucleo.migracion import iniciar
+from .version import router as version_router
 
 iniciar(engine)
 for _l in LINEAS.values():
@@ -21,6 +22,7 @@ app = FastAPI(title="SilVer")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:4200"], allow_methods=["*"],
                    allow_headers=["*"])
 app.include_router(pedidos.router)
+app.include_router(version_router)
 for l in LINEAS.values():
     if l.router:
         app.include_router(l.router)

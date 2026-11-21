@@ -1,6 +1,9 @@
 <header class="barra">
   <a routerLink="/pedidos" class="marca">Sil<span>Ver</span></a>
   <nav>
+    @if (version()) {
+      <span class="version" title="Versión desplegada">{{ version() }}</span>
+    }
     <a routerLink="/letreros/perfiles" class="enlace">Perfiles LED</a>
     <a routerLink="/pedidos/nuevo" class="boton">+ Nuevo pedido</a>
   </nav>
