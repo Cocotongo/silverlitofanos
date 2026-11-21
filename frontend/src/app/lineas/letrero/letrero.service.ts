@@ -6,6 +6,15 @@ export interface ConfigLetrero {
   fuente: string;
   altura: number;
   perfil_id: number | null;
+  estilo?: 'relleno' | 'neon';
+}
+
+/** Medidas, piezas y avisos del diseño antes de generar. */
+export interface RevisionLetrero {
+  medidas: string;
+  piezas: number;
+  medidas_piezas: string[];
+  advertencias: string[];
 }
 
 /** Medidas de construcción del letrero; cambian si cambia el proveedor de la tira. */
@@ -97,6 +106,14 @@ export class LetreroService {
     return this.http.get<string[]>(`${this.api}/fuentes`);
   }
 
+  estilos() {
+    return this.http.get<{ id: NonNullable<ConfigLetrero['estilo']>; nombre: string }[]>(`${this.api}/estilos`);
+  }
+
+  revision(c: Partial<ConfigLetrero>) {
+    return this.http.get<RevisionLetrero>(`${this.api}/revision`, { params: this.params(c) });
+  }
+
   perfiles() {
     return this.http.get<PerfilLed[]>(`${this.api}/perfiles`);
   }
@@ -119,8 +136,16 @@ export class LetreroService {
   }
 
   urlEnsayo(c: Partial<ConfigLetrero>) {
-    let q = new HttpParams().set('texto', c.texto || ' ').set('fuente', c.fuente ?? '').set('altura', c.altura ?? 120);
+    return `${this.api}/ensayo?${this.params(c)}`;
+  }
+
+  private params(c: Partial<ConfigLetrero>) {
+    let q = new HttpParams()
+      .set('texto', c.texto || ' ')
+      .set('fuente', c.fuente ?? '')
+      .set('altura', c.altura ?? 120)
+      .set('estilo', c.estilo ?? 'relleno');
     if (c.perfil_id) q = q.set('perfil_id', c.perfil_id);
-    return `${this.api}/ensayo?${q}`;
+    return q;
   }
 }

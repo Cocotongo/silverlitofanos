@@ -1,15 +1,18 @@
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { catchError, debounceTime, map, of, switchMap } from 'rxjs';
 
 import { Pedido } from '../../pedidos/pedidos.service';
 import { LineaUI } from '../lineas';
-import { ConfigLetrero, LetreroService } from './letrero.service';
+import { ConfigLetrero, LetreroService, RevisionLetrero } from './letrero.service';
 
 type PedidoLetrero = Pedido<ConfigLetrero>;
 
 export const LETRERO_UI: LineaUI = {
-  subtitulo: (p) => `«${p.config['texto']}» · ${String(p.config['fuente']).replace('-Regular', '')}`,
+  subtitulo: (p) =>
+    `«${p.config['texto']}» · ${String(p.config['fuente']).replace('-Regular', '')}` +
+    (p.config['estilo'] === 'neon' ? ' · neón' : ''),
   resumen: (p) =>
     `${p.resumen['medidas']} · ${p.resumen['piezas']} piezas · ≈ ${p.resumen['gramos']} g · perfil ${p.resumen['perfil_nombre']}`,
   generar: 'Generar piezas',
@@ -37,6 +40,12 @@ export const LETRERO_UI: LineaUI = {
           (change)="poner('altura', +$any($event.target).value)" /></div>
     </div>
     <div>
+      <label>Estilo</label>
+      <select [ngModel]="valor().estilo ?? 'relleno'" (ngModelChange)="poner('estilo', $event)">
+        @for (e of estilos(); track e.id) { <option [value]="e.id">{{ e.nombre }}</option> }
+      </select>
+    </div>
+    <div>
       <label>Perfil de tira / proveedor</label>
       <select [ngModel]="valor().perfil_id ?? perfiles()[0]?.id" (ngModelChange)="poner('perfil_id', +$event)">
         @for (p of perfiles(); track p.id) {
@@ -56,6 +65,7 @@ export class LetreroCampos {
   cambio = output<Partial<ConfigLetrero>>();
 
   fuentes = toSignal(this.servicio.fuentes(), { initialValue: [] });
+  estilos = toSignal(this.servicio.estilos(), { initialValue: [] });
   perfiles = toSignal(this.servicio.perfiles(), { initialValue: [] });
 
   poner<K extends keyof ConfigLetrero>(campo: K, v: ConfigLetrero[K]) {
@@ -64,16 +74,54 @@ export class LetreroCampos {
   }
 }
 
+/** Medidas, piezas y avisos del diseño (se recalcula al cambiar texto, fuente, alto, estilo o perfil). */
+@Component({
+  selector: 'app-letrero-revision',
+  template: `
+    @if (revision(); as r) {
+      @if (r.error) {
+        <p class="aviso">⚠ {{ r.error }}</p>
+      } @else {
+        <p class="nota">{{ r.medidas }} · {{ r.piezas }} piezas: {{ r.medidas_piezas.join(' · ') }} mm</p>
+        @for (a of r.advertencias; track a) { <p class="aviso">⚠ {{ a }}</p> }
+      }
+    }
+  `,
+  styles: `
+    .nota { color: var(--suave); font-size: .85rem; margin: 4px 0 0; }
+    .aviso { color: #b7791f; font-size: .85rem; margin: 6px 0 0; }
+  `,
+})
+export class LetreroRevision {
+  private servicio = inject(LetreroService);
+  config = input.required<Partial<ConfigLetrero>>();
+  revision = toSignal(
+    toObservable(this.config).pipe(
+      debounceTime(300),
+      switchMap((c) =>
+        this.servicio.revision(c).pipe(
+          map((r): RevisionLetrero & { error?: string } => r),
+          catchError((e) =>
+            of({ medidas: '', piezas: 0, medidas_piezas: [], advertencias: [],
+                 error: typeof e.error?.detail === 'string' ? e.error.detail : 'No se pudo revisar el diseño' }),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 /** Columna izquierda de "nuevo pedido": campos y vista previa en vivo. */
 @Component({
   selector: 'app-letrero-nuevo',
-  imports: [LetreroCampos],
+  imports: [LetreroCampos, LetreroRevision],
   template: `
     <app-letrero-campos [valor]="valor()" (cambio)="cambiar($event)" />
     <figure>
       <img [src]="ensayo()" alt="Vista previa del letrero" (error)="sinVista.set(true)" (load)="sinVista.set(false)" />
-      <figcaption>{{ sinVista() ? 'No se pudo dibujar: revisa el texto o la fuente' : 'Vista previa (azul = cortes y colas de milano)' }}</figcaption>
+      <figcaption>{{ sinVista() ? 'No se pudo dibujar: revisa el texto o la fuente' : leyenda }}</figcaption>
     </figure>
+    <app-letrero-revision [config]="valor()" />
   `,
   styles: `
     :host { display: grid; gap: 12px; align-content: start; }
@@ -89,9 +137,12 @@ export class LetreroNuevo {
   config = output<Partial<ConfigLetrero>>();
 
   private cambios = signal<Partial<ConfigLetrero>>({ texto: 'SilVer', fuente: 'Pacifico-Regular' });
-  valor = computed(() => ({ altura: 120, perfil_id: null, ...this.base(), ...this.cambios() }) as ConfigLetrero);
+  valor = computed(
+    () => ({ altura: 120, perfil_id: null, estilo: 'relleno', ...this.base(), ...this.cambios() }) as ConfigLetrero,
+  );
   ensayo = computed(() => this.servicio.urlEnsayo(this.valor()));
   sinVista = signal(false);
+  leyenda = LEYENDA;
 
   constructor() {
     effect(() => this.config.emit(this.valor()));
@@ -102,18 +153,23 @@ export class LetreroNuevo {
   }
 }
 
+const LEYENDA = 'Azul = cortes y colas de milano · rojo = trazos donde no cabe la tira';
+
 /** Detalle: vista previa (diseño o piezas generadas) y avisos. */
 @Component({
   selector: 'app-letrero-vista',
+  imports: [LetreroRevision],
   template: `
     @let p = pedido();
     <figure>
       <img [src]="p.generado ? '/api/pedidos/' + p.id + '/previa?v=' + version() : ensayo()" alt="Vista previa del letrero" />
-      <figcaption>{{ p.generado ? 'Piezas generadas (azul = cortes y colas de milano)' : 'Vista previa rápida, todavía sin piezas' }}</figcaption>
+      <figcaption>{{ p.generado ? 'Piezas generadas. ' + leyenda : 'Vista previa rápida, todavía sin piezas. ' + leyenda }}</figcaption>
     </figure>
     @if (p.generado) {
       <p class="nota">Piezas: {{ p.resumen['medidas_piezas']?.join(' · ') }} mm</p>
       @for (a of p.resumen['advertencias'] ?? []; track a) { <p class="aviso">⚠ {{ a }}</p> }
+    } @else {
+      <app-letrero-revision [config]="p.config" />
     }
   `,
   styles: `
@@ -128,5 +184,6 @@ export class LetreroVista {
   private servicio = inject(LetreroService);
   pedido = input.required<PedidoLetrero>();
   version = input(0);
+  leyenda = LEYENDA;
   ensayo = computed(() => this.servicio.urlEnsayo(this.pedido().config) + `&v=${this.version()}`);
 }
