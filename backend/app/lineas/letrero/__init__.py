@@ -83,6 +83,7 @@ class ConfigLetrero(BaseModel):
     fuente: str = "Pacifico-Regular"
     altura: float = PField(120, gt=10, le=400)  # alto de las mayusculas, mm
     perfil_id: Optional[int] = None  # None = el primer perfil
+    estilo: str = "relleno"  # relleno | neon
 
 
 def perfil_de(s: Session, perfil_id: Optional[int]) -> PerfilLed:
@@ -101,6 +102,11 @@ router = APIRouter(prefix="/api/lineas/letrero")
 @router.get("/fuentes")
 def lista_fuentes():
     return generador.fuentes()
+
+
+@router.get("/estilos")
+def lista_estilos():
+    return [{"id": k, "nombre": v} for k, v in generador.ESTILOS.items()]
 
 
 @router.get("/perfiles", response_model=list[PerfilLed])
@@ -148,14 +154,26 @@ def borrar_perfil(perfil_id: int, s: Session = Depends(sesion)):
 @router.get("/ensayo")
 async def ensayo(texto: str = Query(..., min_length=1, max_length=80), fuente: str = "Pacifico-Regular",
                  altura: float = Query(120, gt=10, le=400), perfil_id: Optional[int] = None,
-                 s: Session = Depends(sesion)):
+                 estilo: str = "relleno", s: Session = Depends(sesion)):
     """Vista previa rapida (solo 2D): sirve para probar texto, fuente y tamano antes de crear el pedido."""
     medidas = perfil_de(s, perfil_id).medidas()
     try:
-        png = await run_in_threadpool(generador.ensayo_png, texto, fuente, altura, medidas)
+        png = await run_in_threadpool(generador.ensayo_png, texto, fuente, altura, medidas, estilo)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return Response(png, media_type="image/png")
+
+
+@router.get("/revision")
+async def revision(texto: str = Query(..., min_length=1, max_length=80), fuente: str = "Pacifico-Regular",
+                   altura: float = Query(120, gt=10, le=400), perfil_id: Optional[int] = None,
+                   estilo: str = "relleno", s: Session = Depends(sesion)):
+    """Medidas, piezas y avisos del diseno, para mostrarlos junto a la vista previa antes de generar."""
+    medidas = perfil_de(s, perfil_id).medidas()
+    try:
+        return await run_in_threadpool(generador.revisar, texto, fuente, altura, medidas, estilo)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 @router.get("/perfiles/{perfil_id}/prueba-union")
@@ -205,17 +223,19 @@ class Letrero(Linea):
     descarga = "letrero.zip"
     router = router
 
-    def config_inicial(self, producto, extra):
-        c = super().config_inicial(producto, extra)
+    @staticmethod
+    def _validar(c):
         if c["fuente"] not in generador.fuentes():
             raise HTTPException(422, f"Fuente desconocida: {c['fuente']}")
+        if c.get("estilo", "relleno") not in generador.ESTILOS:
+            raise HTTPException(422, f"Estilo desconocido: {c['estilo']}")
         return c
 
+    def config_inicial(self, producto, extra):
+        return self._validar(super().config_inicial(producto, extra))
+
     def actualizar_config(self, actual, cambios):
-        c = super().actualizar_config(actual, cambios)
-        if c["fuente"] not in generador.fuentes():
-            raise HTTPException(422, f"Fuente desconocida: {c['fuente']}")
-        return c
+        return self._validar(super().actualizar_config(actual, cambios))
 
     def migrar(self, engine):
         """Agrega a perfil_led las medidas nuevas (con su valor por defecto) si la tabla es de antes."""
@@ -232,7 +252,7 @@ class Letrero(Linea):
             nombre = perfil.nombre
             medidas = perfil.medidas()
         try:
-            r = generador.generar(c.texto, c.fuente, c.altura, medidas, carpeta)
+            r = generador.generar(c.texto, c.fuente, c.altura, medidas, carpeta, c.estilo)
         except ValueError as e:
             raise HTTPException(422, str(e))
         return {**r, "perfil_nombre": nombre}
