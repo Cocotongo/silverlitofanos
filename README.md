@@ -63,3 +63,11 @@ python -m pytest
 ```
 
 Catálogo y precios de litofanos: `productos` en `backend/app/lineas/litofano/__init__.py`.
+
+## Automatización después de cada merge
+- **Pruebas en GitHub** (`.github/workflows/pruebas.yml`): en cada PR y en cada push a `main` corren las pruebas del backend (`pytest`, Python 3.12) y el build del frontend (`npm run build`, Node 22). Si algo falla, el PR lo muestra en rojo antes de fusionarlo.
+- **Despliegue solo en el servidor Docker** (`tools/actualizar_servidor.sh`): revisa si `main` tiene commits nuevos; si los tiene hace `git pull --ff-only` y `docker compose up -d --build`, si no, no hace nada. Ponlo en cron cada 5 minutos y cada merge queda desplegado a más tardar unos minutos después:
+  ```
+  */5 * * * * /ruta/a/silverlitofanos/tools/actualizar_servidor.sh >> /var/log/silver-actualizar.log 2>&1
+  ```
+  Los pedidos y archivos están en `./datos` (volumen del compose) y no se tocan. La rama se cambia con `SILVER_RAMA`.
