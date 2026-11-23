@@ -21,7 +21,7 @@ from shapely import affinity
 from shapely.ops import polylabel
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon, box
 from shapely.geometry.polygon import orient
-from shapely.ops import nearest_points, unary_union
+from shapely.ops import linemerge, nearest_points, unary_union
 
 FUENTES = Path(__file__).parent / "fuentes"
 DENSIDAD_PETG = 1.27  # g/cm3
@@ -184,25 +184,33 @@ def _tuneles(canales: list[Polygon], ancho: float):
 def _cortes(contorno, x0, x1, maximo, evitar):
     """Elige donde cortar en vertical para que ninguna pieza pase de `maximo` de ancho.
 
-    Busca, dentro de la ventana permitida, la linea que cruza menos material y no pasa por un tunel.
+    Reparte el ancho en el menor numero de piezas posible y, cerca de cada reparto parejo, busca la
+    linea que cruza menos material y no pasa por un tunel (asi no quedan piezas diminutas al final).
     """
-    cortes, inicio = [], x0
     alto = contorno.bounds[3] - contorno.bounds[1] + 10
     y0 = contorno.bounds[1] - 5
-    while x1 - inicio > maximo:
-        mejor = None
-        for x in np.arange(inicio + maximo * 0.45, inicio + maximo - 1, 1.0):
-            linea = box(x - 0.05, y0, x + 0.05, y0 + alto)
-            if linea.intersects(evitar):
-                continue
-            costo = linea.intersection(contorno).area
-            if mejor is None or costo < mejor[0]:
-                mejor = (costo, x)
-        if mejor is None:
-            raise ValueError("No encontré dónde cortar las piezas; prueba con letras más chicas o pieza_max mayor")
-        cortes.append(mejor[1])
-        inicio = mejor[1]
-    return cortes
+    n = int(np.ceil((x1 - x0) / (maximo - 1)))
+    for n in range(n, n + 4):
+        seg = (x1 - x0) / n
+        cortes, inicio = [], x0
+        for k in range(1, n):
+            lo = max(inicio + 0.6 * seg, x1 - (n - k) * (maximo - 1))
+            hi = min(inicio + maximo - 1, x1 - (n - k) * 0.6 * seg)
+            mejor = None
+            for x in np.arange(lo, hi + 0.01, 1.0):
+                linea = box(x - 0.05, y0, x + 0.05, y0 + alto)
+                if linea.intersects(evitar):
+                    continue
+                costo = linea.intersection(contorno).area
+                if mejor is None or costo < mejor[0]:
+                    mejor = (costo, x)
+            if mejor is None:
+                break
+            cortes.append(mejor[1])
+            inicio = mejor[1]
+        else:
+            return cortes
+    raise ValueError("No encontré dónde cortar las piezas; prueba con letras más chicas o pieza_max mayor")
 
 
 def _colgador(pieza, p: Perfil):
@@ -217,34 +225,90 @@ def _colgador(pieza, p: Perfil):
     return forma if pieza.buffer(-1).contains(forma) else Polygon()
 
 
-def disenar(texto: str, fuente: str, altura: float, p: Perfil) -> dict:
+ESTILOS = {"relleno": "Relleno (la letra completa se ilumina)", "neon": "Neón (tubo de ancho fijo que sigue el trazo)"}
+
+
+def delgados(canal, p: Perfil):
+    """Zonas del trazo donde no cabe la tira con su holgura (sin contar las puntitas de las letras)."""
+    r = p.ancho_minimo / 2
+    resto = canal.difference(canal.buffer(-r).buffer(r + 0.01))
+    return unary_union([q for q in _poligonos(resto) if q.area > max(20.0, p.ancho_minimo ** 2 * 0.15)])
+
+
+def _esqueleto(forma, paso=0.25):
+    """Linea central de una forma (para el estilo neon): esqueleto de la imagen, convertido a segmentos."""
+    from skimage.morphology import skeletonize
+
+    x0, y0, x1, y1 = forma.bounds
+    x0, y0 = x0 - 2, y0 - 2
+    W, H = int((x1 - x0) / paso) + 5, int((y1 - y0) / paso) + 5
+    img = Image.new("1", (W, H), 0)
+    dib = ImageDraw.Draw(img)
+    a_px = lambda cs: [((x - x0) / paso, (y - y0) / paso) for x, y in cs]  # noqa: E731
+    for q in _poligonos(forma):
+        dib.polygon(a_px(q.exterior.coords), fill=1)
+        for r in q.interiors:
+            dib.polygon(a_px(r.coords), fill=0)
+    esq = skeletonize(np.ascontiguousarray(np.array(img.convert("L")) > 0))
+    # quita ramitas sueltas cerca de las esquinas: recorta las puntas unas vueltas
+    vecinos = lambda m: sum(np.roll(np.roll(m, dy, 0), dx, 1) for dy in (-1, 0, 1) for dx in (-1, 0, 1)  # noqa: E731
+                            if dy or dx)
+    for _ in range(int(3 / paso)):
+        n = vecinos(esq.astype(np.uint8))
+        esq &= ~(n <= 1)
+    ys, xs = np.nonzero(esq)
+    pts = set(zip(ys.tolist(), xs.tolist()))
+    segs = []
+    for y, x in pts:
+        for dy, dx in ((0, 1), (1, 0), (1, 1), (1, -1)):
+            if (y + dy, x + dx) in pts:
+                segs.append([(x0 + x * paso, y0 + y * paso), (x0 + (x + dx) * paso, y0 + (y + dy) * paso)])
+    from shapely.geometry import MultiLineString
+    # une los segmentos en trazos y quita el escalonado de los pixeles
+    return linemerge(MultiLineString(segs)).simplify(paso * 1.5) if segs else MultiLineString()
+
+
+def _canal_neon(formas, p: Perfil):
+    """Tubo de ancho fijo (tira + holgura) que sigue la linea central de cada letra."""
+    r = p.ancho_minimo / 2
+    return unary_union([_esqueleto(f).buffer(r, quad_segs=8) for f in formas])
+
+
+def disenar(texto: str, fuente: str, altura: float, p: Perfil, estilo: str = "relleno") -> dict:
     """Calcula el diseno en 2D: canales, contornos, tuneles y cortes. Sin 3D (rapido)."""
     if p.fondo_canal <= p.base + 1 or p.fondo_canal >= p.profundidad:
         raise ValueError("fondo_canal debe quedar entre la base y la profundidad")
-    advertencias, palabras = [], []
+    if estilo not in ESTILOS:
+        raise ValueError(f"Estilo desconocido: {estilo}")
+    advertencias, palabras, n_delgados = [], [], 0
     ancho_tunel = p.ancho_minimo
     for formas in letras(texto, fuente, altura):
         if not formas:
             continue
-        canal = unary_union(formas)
-        # trazos mas delgados que la tira con su holgura
-        delgado = canal.difference(canal.buffer(-p.ancho_minimo / 2).buffer(p.ancho_minimo / 2 + 0.01))
-        if delgado.area > 0.05 * canal.area:
-            advertencias.append(f"Hay trazos más delgados que {p.ancho_minimo:g} mm (tira + holgura): "
-                                f"sube la altura de letra o usa otra fuente")
+        if estilo == "neon":
+            canal, delgado = _canal_neon(formas, p), Polygon()
+        else:
+            canal = unary_union(formas)
+            delgado = delgados(canal, p)
+            n_delgados += len(_poligonos(delgado))
         grupos = sorted(_poligonos(canal), key=lambda q: q.bounds[0])
         tuneles = _tuneles(grupos, ancho_tunel)
         contorno = unary_union([canal.buffer(p.pared), tuneles.buffer(p.pared)])
-        palabras.append({"canal": canal, "tuneles": tuneles, "contorno": contorno})
+        palabras.append({"canal": canal, "tuneles": tuneles, "contorno": contorno, "delgado": delgado})
     if not palabras:
         raise ValueError("El texto está vacío")
+    if n_delgados:
+        n = n_delgados
+        advertencias.append(f"{n} zona{'s' if n > 1 else ''} del trazo mide{'n' if n > 1 else ''} menos de "
+                            f"{p.ancho_minimo:g} mm (tira + holgura) y la tira no cabe (en rojo en la vista previa): "
+                            f"sube el alto de letra, usa otra fuente o el estilo neón")
     # las palabras que se tocan por la pared se juntan; si no, quedan separadas (el cable brinca)
     piezas = []
     for w in palabras:
         b = w["contorno"].bounds
         if b[3] - b[1] > p.pieza_max:
             raise ValueError(f"El letrero mide {b[3] - b[1]:.0f} mm de alto y la pieza máxima es {p.pieza_max:g} mm")
-        cortes = _cortes(w["contorno"], b[0], b[2], p.pieza_max, w["tuneles"].buffer(1))
+        cortes = _cortes(w["contorno"], b[0], b[2], p.pieza_max - p.cola_largo, w["tuneles"].buffer(1))
         lims = [b[0] - 1] + cortes + [b[2] + 1]
         trozos = []
         for i, (xa, xb) in enumerate(zip(lims, lims[1:])):
@@ -383,6 +447,7 @@ def vista_previa(d: dict, ruta, escala=2.0):
         pinta(w["canal"].buffer(2), (255, 190, 120))  # brillo
         pinta(w["canal"], (255, 238, 210))
         pinta(w["tuneles"].difference(w["canal"]), (130, 110, 90))
+        pinta(w.get("delgado", Polygon()), (230, 60, 60))
     for t, sig in zip(d["piezas"], d["piezas"][1:]):
         if t["palabra"] is not sig["palabra"]:
             continue
@@ -393,8 +458,22 @@ def vista_previa(d: dict, ruta, escala=2.0):
     img.save(ruta, "PNG")
 
 
-def generar(texto: str, fuente: str, altura: float, perfil: Perfil, carpeta: Path) -> dict:
-    d = disenar(texto, fuente, altura, perfil)
+def _medidas(d, p: Perfil) -> dict:
+    todo = unary_union([w["contorno"] for w in d["palabras"]]).bounds
+    medidas = [(round(t["contorno"].bounds[2] - t["contorno"].bounds[0]),
+                round(t["contorno"].bounds[3] - t["contorno"].bounds[1])) for t in d["piezas"]]
+    return {"medidas": f"{todo[2] - todo[0]:.0f} x {todo[3] - todo[1]:.0f} x {p.profundidad:g} mm",
+            "piezas": len(d["piezas"]), "medidas_piezas": [f"{a} x {b}" for a, b in medidas],
+            "advertencias": d["advertencias"]}
+
+
+def revisar(texto: str, fuente: str, altura: float, perfil: Perfil, estilo: str = "relleno") -> dict:
+    """Medidas, piezas y avisos del diseno (solo 2D, rapido) para mostrarlos antes de generar."""
+    return _medidas(disenar(texto, fuente, altura, perfil, estilo), perfil)
+
+
+def generar(texto: str, fuente: str, altura: float, perfil: Perfil, carpeta: Path, estilo: str = "relleno") -> dict:
+    d = disenar(texto, fuente, altura, perfil, estilo)
     piezas = construir(d, perfil)
     zip_ruta = carpeta / "letrero.zip"
     gramos = 0.0
@@ -405,18 +484,13 @@ def generar(texto: str, fuente: str, altura: float, perfil: Perfil, carpeta: Pat
             gramos += sum(_gramos(m) for m in (pz["carcasa"], pz["cubierta"]))
         z.writestr("perfil.txt", "\n".join(f"{k}: {v}" for k, v in asdict(perfil).items()))
     vista_previa(d, carpeta / "previa.png")
-    todo = unary_union([w["contorno"] for w in d["palabras"]]).bounds
-    medidas = [(round(pz["contorno"].bounds[2] - pz["contorno"].bounds[0]),
-                round(pz["contorno"].bounds[3] - pz["contorno"].bounds[1])) for pz in piezas]
-    return {"medidas": f"{todo[2] - todo[0]:.0f} x {todo[3] - todo[1]:.0f} x {perfil.profundidad:g} mm",
-            "piezas": len(piezas), "medidas_piezas": [f"{a} x {b}" for a, b in medidas],
-            "gramos": round(gramos), "advertencias": d["advertencias"], "perfil": asdict(perfil)}
+    return {**_medidas(d, perfil), "gramos": round(gramos), "estilo": estilo, "perfil": asdict(perfil)}
 
 
-def ensayo_png(texto: str, fuente: str, altura: float, perfil: Perfil) -> bytes:
+def ensayo_png(texto: str, fuente: str, altura: float, perfil: Perfil, estilo: str = "relleno") -> bytes:
     """Vista previa rapida (solo 2D) para probar texto, fuente y tamano."""
     buf = io.BytesIO()
-    vista_previa(disenar(texto, fuente, altura, perfil), buf, escala=1.0)
+    vista_previa(disenar(texto, fuente, altura, perfil, estilo), buf, escala=1.0)
     return buf.getvalue()
 
 

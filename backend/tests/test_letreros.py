@@ -117,3 +117,34 @@ def test_prueba_de_union():
     nombres = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
     assert "LEEME.txt" in nombres and len([n for n in nombres if n.endswith(".stl")]) == 2
     assert cliente.get(f"/api/lineas/letrero/perfiles/{pid}/prueba-union", params={"holguras": "x"}).status_code == 422
+
+
+def test_trazos_delgados_y_revision():
+    p = generador.Perfil()
+    d = generador.disenar("Pretty Cutters", "Lobster-Regular", 120, p)
+    assert any("menos de 12 mm" in a for a in d["advertencias"])
+    assert sum(w["delgado"].area for w in d["palabras"]) > 0
+    r = cliente.get("/api/lineas/letrero/revision", params={"texto": "Pretty Cutters", "fuente": "Lobster-Regular"})
+    assert r.status_code == 200 and r.json()["piezas"] >= 2 and r.json()["advertencias"]
+    # ninguna pieza (con la cola que sobresale) pasa de la medida maxima, ni queda diminuta
+    for t in d["piezas"]:
+        b = t["contorno"].bounds
+        assert b[2] - b[0] <= p.pieza_max - p.cola_largo and b[2] - b[0] > 40
+
+
+def test_estilo_neon():
+    p = generador.Perfil()
+    assert {e["id"] for e in cliente.get("/api/lineas/letrero/estilos").json()} == {"relleno", "neon"}
+    d = generador.disenar("Pretty Cutters", "Lobster-Regular", 120, p, "neon")
+    assert not any("menos de" in a for a in d["advertencias"])
+    for w in d["palabras"]:
+        # el tubo es de ancho parejo: cabe la tira en todo el canal
+        casi = generador.Perfil(holgura_tira=p.holgura_tira - 0.1)
+        assert generador.delgados(w["canal"], casi).is_empty
+    piezas = generador.construir(d, p)
+    assert all(len(pz["carcasa"].decompose()) == 1 and pz["carcasa"].volume() > 0 for pz in piezas)
+    r = cliente.post("/api/pedidos", data={"cliente": "Neo", "linea": "letrero", "producto": "letrero-chico",
+                                           "config": '{"texto": "Hola", "estilo": "neon"}'})
+    assert r.status_code == 201 and r.json()["config"]["estilo"] == "neon"
+    assert cliente.post("/api/pedidos", data={"cliente": "X", "linea": "letrero", "producto": "letrero-chico",
+                                              "config": '{"texto": "Hola", "estilo": "otro"}'}).status_code == 422
