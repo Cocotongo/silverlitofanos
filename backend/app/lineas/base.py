@@ -29,6 +29,7 @@ class Archivo:
     etiqueta: str
     acepta: str  # como el atributo accept de <input type=file>, p. ej. "image/*" o ".dxf,.svg"
     requerido: bool = True
+    cantidad: int = 1  # cuantos archivos pide (p. ej. 4 fotos para el cubo)
 
 
 class Linea:
@@ -70,4 +71,5 @@ class Linea:
         return {"id": self.id, "nombre": self.nombre, "productos": self.productos,
                 "flujo": [{"id": p.id, "nombre": p.nombre, "fase": p.fase.value} for p in self.flujo],
                 "archivo": self.archivo and {"etiqueta": self.archivo.etiqueta, "acepta": self.archivo.acepta,
-                                             "requerido": self.archivo.requerido}}
+                                             "requerido": self.archivo.requerido,
+                                             "cantidad": self.archivo.cantidad}}

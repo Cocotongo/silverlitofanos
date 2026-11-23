@@ -20,6 +20,9 @@ def iniciar(engine):
     SQLModel.metadata.create_all(engine)
     if viejas:
         _migrar_v1(engine)
+    with engine.begin() as con:
+        if "archivos" not in {c["name"] for c in inspect(con).get_columns("pedido")}:
+            con.execute(text("ALTER TABLE pedido ADD COLUMN archivos JSON NOT NULL DEFAULT '[]'"))
 
 
 def _migrar_v1(engine):

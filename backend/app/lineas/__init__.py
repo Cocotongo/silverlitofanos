@@ -2,11 +2,12 @@
 from fastapi import HTTPException
 
 from .base import Linea
+from .cubo import Cubo
 from .letrero import Letrero
 from .litofano import Litofano
 from .luna import Luna
 
-LINEAS: dict[str, Linea] = {l.id: l for l in (Litofano(), Letrero(), Luna())}
+LINEAS: dict[str, Linea] = {l.id: l for l in (Litofano(), Letrero(), Luna(), Cubo())}
 
 
 def linea(linea_id: str) -> Linea:

@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
@@ -61,7 +61,8 @@ async def crear(cliente: str = Form(...), telefono: str = Form(""), canal: str =
                 linea_id: str = Form("litofano", alias="linea"), producto: str = Form(...),
                 config: str = Form("{}"), precio: Optional[float] = Form(None), anticipo: float = Form(0),
                 notas: str = Form(""), fecha_entrega: Optional[date] = Form(None),
-                archivo: Optional[UploadFile] = File(None), s: Session = Depends(sesion)):
+                archivo: Optional[UploadFile] = File(None), archivos: Optional[list[UploadFile]] = File(None),
+                s: Session = Depends(sesion)):
     l = linea(linea_id)
     prod = l.producto(producto)
     if not prod:
@@ -70,19 +71,28 @@ async def crear(cliente: str = Form(...), telefono: str = Form(""), canal: str =
         extra = json.loads(config)
     except ValueError:
         raise HTTPException(400, "config debe ser JSON")
-    if l.archivo and l.archivo.requerido and not archivo:
-        raise HTTPException(400, f"Falta el archivo: {l.archivo.etiqueta}")
-    if archivo and not l.acepta_archivo(archivo.filename or "", archivo.content_type or ""):
-        raise HTTPException(400, f"Archivo no válido para {l.nombre}")
+    subidos = ([archivo] if archivo else []) + list(archivos or [])
+    cantidad = l.archivo.cantidad if l.archivo else 0
+    if l.archivo and l.archivo.requerido and len(subidos) < cantidad:
+        faltan = cantidad - len(subidos)
+        raise HTTPException(400, f"Falta el archivo: {l.archivo.etiqueta}" if cantidad == 1
+                            else f"Faltan {faltan} de {cantidad} archivos: {l.archivo.etiqueta}")
+    if len(subidos) > max(cantidad, 1):
+        raise HTTPException(400, f"{l.nombre} lleva {cantidad} archivo(s), llegaron {len(subidos)}")
+    for a in subidos:
+        if not l.acepta_archivo(a.filename or "", a.content_type or ""):
+            raise HTTPException(400, f"Archivo no válido para {l.nombre}")
     p = Pedido(cliente=cliente, telefono=telefono, canal=canal, linea=l.id, producto=producto,
                precio=prod["precio"] if precio is None else precio, anticipo=anticipo, notas=notas,
                fecha_entrega=fecha_entrega, estado=l.flujo[0].id, config=validar(l.config_inicial, prod, extra))
     destino = carpeta(p)
     destino.mkdir(parents=True)
-    if archivo:
-        p.archivo = f"original{Path(archivo.filename or '').suffix.lower()}"
-        with open(destino / p.archivo, "wb") as f:
-            shutil.copyfileobj(archivo.file, f)
+    for i, a in enumerate(subidos, 1):
+        nombre = f"original{'' if len(subidos) == 1 else f'_{i}'}{Path(a.filename or '').suffix.lower()}"
+        with open(destino / nombre, "wb") as f:
+            shutil.copyfileobj(a.file, f)
+        p.archivos = [*p.archivos, nombre]
+    p.archivo = p.archivos[0] if p.archivos else ""
     s.add(p)
     s.commit()
     s.refresh(p)
@@ -141,9 +151,11 @@ def servir(p: Pedido, nombre: str, descarga: Optional[str] = None):
 
 
 @router.get("/pedidos/{pedido_id}/archivo")
-def archivo_original(pedido_id: int, s: Session = Depends(sesion)):
+def archivo_original(pedido_id: int, n: int = Query(1, ge=1), s: Session = Depends(sesion)):
+    """Archivo del cliente; n = 1, 2... cuando el pedido lleva varios."""
     p = obtener(s, pedido_id)
-    return servir(p, p.archivo)
+    nombres = p.archivos or [p.archivo]
+    return servir(p, nombres[n - 1] if n <= len(nombres) else "")
 
 
 @router.get("/pedidos/{pedido_id}/previa")
