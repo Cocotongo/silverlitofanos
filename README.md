@@ -21,6 +21,11 @@ Las piezas embonan con **colas de milano** en cada tramo de pared que cruza el c
 
 Todas las medidas (ancho de tira, holgura, alto del túnel, pared, cubierta, holgura entre piezas, tamaño máximo de pieza…) viven en **Perfiles LED** (menú superior), uno por tira o proveedor. El pedido elige su perfil y las medidas usadas quedan en `perfil.txt` dentro del ZIP. Las fuentes están en `backend/app/lineas/letrero/fuentes/` (Pacifico y Lobster, licencia OFL): para agregar otra, copia ahí su `.ttf`.
 
+### Lámparas luna (`lineas/luna/`)
+Esfera litofano con la superficie de la Luna; no lleva foto del cliente. El relieve sale de `luna.png`, una mezcla del albedo (LROC) y el relieve (LOLA) del [CGI Moon Kit de la NASA](https://svs.gsfc.nasa.gov/4720), de dominio público, así que las lámparas se pueden vender. Para regenerarlo: `python tools/preparar_luna.py`.
+
+La esfera es hueca, con una **boca plana abajo** para la placa LED (diámetro editable en el pedido; mide la placa y deja 1–2 mm de holgura) y un anillo sólido de 6 mm alrededor para que sea rígida. La cara visible de la Luna queda hacia el frente del slicer. Se imprime con la boca sobre la cama, sin soportes, con brim. Productos: Ø150 ($699, ≈150 g PLA) y Ø100 ($499, ≈60 g).
+
 Al arrancar, la base de datos de la versión anterior se pasa sola al formato nuevo (los pedidos existentes quedan como litofanos).
 
 ## Requisitos (Windows)
