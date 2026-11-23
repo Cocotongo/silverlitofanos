@@ -4,8 +4,9 @@ from fastapi import HTTPException
 from .base import Linea
 from .letrero import Letrero
 from .litofano import Litofano
+from .luna import Luna
 
-LINEAS: dict[str, Linea] = {l.id: l for l in (Litofano(), Letrero())}
+LINEAS: dict[str, Linea] = {l.id: l for l in (Litofano(), Letrero(), Luna())}
 
 
 def linea(linea_id: str) -> Linea:

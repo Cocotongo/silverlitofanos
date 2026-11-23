@@ -5,11 +5,12 @@ import { Router } from '@angular/router';
 
 import { LetreroNuevo } from '../lineas/letrero/letrero';
 import { LitofanoNuevo } from '../lineas/litofano/litofano';
+import { LunaNuevo } from '../lineas/luna/luna';
 import { PedidosService } from './pedidos.service';
 
 @Component({
   selector: 'app-nuevo-pedido',
-  imports: [ReactiveFormsModule, CurrencyPipe, LitofanoNuevo, LetreroNuevo],
+  imports: [ReactiveFormsModule, CurrencyPipe, LitofanoNuevo, LetreroNuevo, LunaNuevo],
   template: `
     <h1>Nuevo pedido</h1>
     <form class="tarjeta rejilla" [formGroup]="form" (ngSubmit)="guardar()">
@@ -30,6 +31,7 @@ import { PedidosService } from './pedidos.service';
       } @else {
         @switch (linea()?.id) {
           @case ('letrero') { <app-letrero-nuevo [base]="$any(producto()?.config)" (config)="config.set($event)" /> }
+          @case ('luna') { <app-luna-nuevo [base]="$any(producto()?.config)" (config)="config.set($event)" /> }
         }
       }
 
