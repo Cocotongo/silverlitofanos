@@ -38,6 +38,8 @@ class Pedido(SQLModel, table=True):
     creado: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     carpeta: str = Field(default_factory=lambda: uuid.uuid4().hex)
     archivo: str = ""  # nombre del archivo que mando el cliente (foto, logo, dxf...)
+    # todos los archivos del cliente, en orden, cuando la linea pide varios (p. ej. las 4 fotos del cubo)
+    archivos: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
     # datos propios de la linea (p. ej. forma, material y encuadre del litofano)
     config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     generado: bool = False  # ya se generaron los archivos de produccion

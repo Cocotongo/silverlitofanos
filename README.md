@@ -21,12 +21,32 @@ Las piezas embonan con **colas de milano** en cada tramo de pared que cruza el c
 
 Todas las medidas (ancho de tira, holgura, alto del túnel, pared, cubierta, holgura entre piezas, tamaño máximo de pieza…) viven en **Perfiles LED** (menú superior), uno por tira o proveedor. El pedido elige su perfil y las medidas usadas quedan en `perfil.txt` dentro del ZIP. Las fuentes están en `backend/app/lineas/letrero/fuentes/` (Pacifico y Lobster, licencia OFL): para agregar otra, copia ahí su `.ttf`.
 
+### Cubos de 4 fotos (`lineas/cubo/`)
+El pedido lleva **4 fotos** (en orden: frente, derecha, atrás, izquierda); el núcleo ya acepta varios archivos por pedido (`archivos`, se ven con `/api/pedidos/{id}/archivo?n=2`). Cada foto tiene su encuadre (acercar, mover a los lados y en altura) en el detalle del pedido.
+
+Salen 6 piezas en el ZIP, con un `LEEME.txt` de impresión y armado:
+- **cara1–cara4** (blanco): cara de afuera plana y relieve hacia adentro, marco sólido y **cantos laterales a 45°** para que las esquinas embonen sin que se vea la unión. Se imprimen de pie.
+- **base** (PLA de color): ranura arriba donde entran las 4 caras, hueco para la tira LED, cámara hueca para ahorrar material y salida para el cable.
+- **tapa** (PLA de color): la misma ranura por abajo; se imprime volteada.
+
+Producto: cubo de 80 mm ($999), queda de 89 × 89 × 106 mm, ≈ 75 g de PLA blanco en caras y ≈ 93 g de PLA de color en base y tapa (sólido; con relleno del slicer pesa menos).
+
 ### Lámparas luna (`lineas/luna/`)
 Esfera litofano con la superficie de la Luna; no lleva foto del cliente. El relieve sale de `luna.png`, una mezcla del albedo (LROC) y el relieve (LOLA) del [CGI Moon Kit de la NASA](https://svs.gsfc.nasa.gov/4720), de dominio público, así que las lámparas se pueden vender. Para regenerarlo: `python tools/preparar_luna.py`.
 
 La esfera es hueca, con una **boca plana abajo** para la placa LED (diámetro editable en el pedido; mide la placa y deja 1–2 mm de holgura) y un anillo sólido de 6 mm alrededor para que sea rígida. La cara visible de la Luna queda hacia el frente del slicer. Se imprime con la boca sobre la cama, sin soportes, con brim. Productos: Ø150 ($699, ≈150 g PLA) y Ø100 ($499, ≈60 g).
 
-Al arrancar, la base de datos de la versión anterior se pasa sola al formato nuevo (los pedidos existentes quedan como litofanos).
+### Lunas de pared (`lineas/luna_pared/`)
+Es un cuadro redondo con el relieve de la cara visible de la Luna. Una tira LED en el aro ilumina el relieve de lado, desde la orilla, y así se marcan los cráteres. No lleva foto del cliente. El relieve sale de `relieve.png`, que es el modelo de alturas LOLA del CGI Moon Kit visto de frente. Para regenerarlo: `python tools/preparar_luna_pared.py`.
+
+Cada pieza cabe en la cama de la KE:
+- **Losetas** blancas con el relieve encima. Hasta Ø410 mm son 4 cuartos de círculo. Más grande, son 4 cuartos al centro y un anillo de 8 o 12 sectores alrededor.
+- **Marco de atrás**: aros y rayos bajo todas las juntas de las losetas, unidos con colas de milano. Arriba lleva un ojo de cerradura para colgarla. Sus juntas quedan corridas respecto a las de las losetas.
+- **Aro** negro en arcos: pestaña donde asienta el marco, pared para la tira LED y un labio a 45° que la tapa sin necesitar soportes.
+
+El ZIP trae un `LEEME.txt` con la impresión y el armado. Productos:
+- **Ø40 cm a $2,499**: 12 piezas, Ø407 × 37 mm, unos 130 cm de tira COB USB.
+- **Ø60 cm a $4,999**: 44 piezas, Ø607 × 37 mm, unos 195 cm de tira.
 
 ## Requisitos (Windows)
 - Python 3.11 o más nuevo

@@ -23,7 +23,7 @@ export interface Linea {
   nombre: string;
   productos: Producto[];
   flujo: Paso[];
-  archivo: { etiqueta: string; acepta: string; requerido: boolean } | null;
+  archivo: { etiqueta: string; acepta: string; requerido: boolean; cantidad: number } | null;
 }
 
 export interface Pedido<C = Record<string, any>> {
@@ -40,6 +40,7 @@ export interface Pedido<C = Record<string, any>> {
   fecha_entrega: string | null;
   creado: string;
   archivo: string;
+  archivos: string[];
   config: C;
   generado: boolean;
   resumen: Record<string, any>;

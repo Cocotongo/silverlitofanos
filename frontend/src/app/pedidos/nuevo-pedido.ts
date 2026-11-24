@@ -6,32 +6,39 @@ import { Router } from '@angular/router';
 import { LetreroNuevo } from '../lineas/letrero/letrero';
 import { LitofanoNuevo } from '../lineas/litofano/litofano';
 import { LunaNuevo } from '../lineas/luna/luna';
+import { LunaParedNuevo } from '../lineas/luna-pared/luna-pared';
 import { PedidosService } from './pedidos.service';
 
 @Component({
   selector: 'app-nuevo-pedido',
-  imports: [ReactiveFormsModule, CurrencyPipe, LitofanoNuevo, LetreroNuevo, LunaNuevo],
+  imports: [ReactiveFormsModule, CurrencyPipe, LitofanoNuevo, LetreroNuevo, LunaNuevo, LunaParedNuevo],
   template: `
     <h1>Nuevo pedido</h1>
     <form class="tarjeta rejilla" [formGroup]="form" (ngSubmit)="guardar()">
       @if (linea()?.archivo; as a) {
         <div class="foto">
           <label>{{ a.etiqueta }}</label>
-          <label class="zona" [class.con-foto]="vista() || archivo">
-            @if (vista()) {
-              <img [src]="vista()" alt="Archivo elegido" />
-            } @else if (archivo) {
-              <span>{{ archivo.name }}</span>
-            } @else {
-              <span>Toca para elegir el archivo</span>
+          <label class="zona" [class.con-foto]="archivos.length" [class.varias]="a.cantidad > 1">
+            @for (v of vistas(); track $index) {
+              <img [src]="v" alt="Archivo elegido" />
+            } @empty {
+              @if (archivos.length) {
+                <span>{{ archivos[0].name }}</span>
+              } @else {
+                <span>{{ a.cantidad > 1 ? 'Toca para elegir las ' + a.cantidad + ' fotos (en orden: frente, derecha, atrás, izquierda)' : 'Toca para elegir el archivo' }}</span>
+              }
             }
-            <input type="file" [accept]="a.acepta" (change)="elegirArchivo($event)" hidden />
+            <input type="file" [accept]="a.acepta" [multiple]="a.cantidad > 1" (change)="elegirArchivo($event)" hidden />
           </label>
+          @if (a.cantidad > 1 && archivos.length && archivos.length !== a.cantidad) {
+            <p class="error">Elegiste {{ archivos.length }} de {{ a.cantidad }} fotos.</p>
+          }
         </div>
       } @else {
         @switch (linea()?.id) {
           @case ('letrero') { <app-letrero-nuevo [base]="$any(producto()?.config)" (config)="config.set($event)" /> }
           @case ('luna') { <app-luna-nuevo [base]="$any(producto()?.config)" (config)="config.set($event)" /> }
+          @case ('luna_pared') { <app-luna-pared-nuevo [base]="$any(producto()?.config)" (config)="config.set($event)" /> }
         }
       }
 
@@ -80,6 +87,8 @@ import { PedidosService } from './pedidos.service';
       border-radius: 10px; cursor: pointer; color: var(--suave); overflow: hidden; margin: 0; }
     .zona.con-foto { border-style: solid; }
     .zona img { width: 100%; height: 100%; object-fit: contain; filter: grayscale(1); }
+    .zona.varias.con-foto { grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; }
+    .zona.varias img { aspect-ratio: 1; object-fit: cover; }
     @media (max-width: 700px) { .rejilla { grid-template-columns: 1fr; } }
   `,
 })
@@ -90,10 +99,10 @@ export class NuevoPedido {
 
   canales = ['WhatsApp', 'Facebook', 'Instagram', 'Mercado Libre', 'Bazar', 'Otro'];
   config = signal<Record<string, unknown>>({});
-  vista = signal<string | null>(null);
+  vistas = signal<string[]>([]);
   guardando = signal(false);
   error = signal('');
-  archivo: File | null = null;
+  archivos: File[] = [];
 
   form = this.fb.nonNullable.group({
     cliente: ['', Validators.required],
@@ -110,8 +119,11 @@ export class NuevoPedido {
   private eleccion = signal(this.form.controls.producto.value);
   linea = computed(() => this.servicio.linea(this.eleccion().split('/')[0]));
   producto = computed(() => this.linea()?.productos.find((p) => p.id === this.eleccion().split('/')[1]));
-  private archivoElegido = signal(false);
-  faltaArchivo = computed(() => !!this.linea()?.archivo?.requerido && !this.archivoElegido());
+  private elegidos = signal(0);
+  faltaArchivo = computed(() => {
+    const a = this.linea()?.archivo;
+    return !!a?.requerido && this.elegidos() !== (a.cantidad || 1);
+  });
 
   constructor() {
     // cuando llega el catalogo, pone el precio del producto elegido
@@ -133,20 +145,20 @@ export class NuevoPedido {
   }
 
   elegirArchivo(ev: Event) {
-    const archivo = (ev.target as HTMLInputElement).files?.[0];
-    if (!archivo) return;
+    const cantidad = this.linea()?.archivo?.cantidad || 1;
+    const elegidos = Array.from((ev.target as HTMLInputElement).files ?? []).slice(0, cantidad);
+    if (!elegidos.length) return;
     this.quitarArchivo();
-    this.archivo = archivo;
-    this.archivoElegido.set(true);
-    if (archivo.type.startsWith('image/')) this.vista.set(URL.createObjectURL(archivo));
+    this.archivos = elegidos;
+    this.elegidos.set(elegidos.length);
+    this.vistas.set(elegidos.filter((a) => a.type.startsWith('image/')).map((a) => URL.createObjectURL(a)));
   }
 
   private quitarArchivo() {
-    const vistaAnterior = this.vista();
-    if (vistaAnterior) URL.revokeObjectURL(vistaAnterior);
-    this.vista.set(null);
-    this.archivo = null;
-    this.archivoElegido.set(false);
+    for (const v of this.vistas()) URL.revokeObjectURL(v);
+    this.vistas.set([]);
+    this.archivos = [];
+    this.elegidos.set(0);
   }
 
   guardar() {
@@ -160,7 +172,8 @@ export class NuevoPedido {
     datos.append('linea', linea);
     datos.append('producto', id);
     datos.append('config', JSON.stringify(this.config()));
-    if (this.archivo) datos.append('archivo', this.archivo);
+    if (this.archivos.length === 1) datos.append('archivo', this.archivos[0]);
+    else for (const a of this.archivos) datos.append('archivos', a);
     this.guardando.set(true);
     this.servicio.crear(datos).subscribe({
       next: (p) => this.router.navigate(['/pedidos', p.id]),

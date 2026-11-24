@@ -38,7 +38,7 @@ def test_lineas():
     assert [p["id"] for p in lito["flujo"]][:2] == ["nuevo", "previa_enviada"]
     assert {p["fase"] for p in lito["flujo"]} >= {"nuevo", "produccion", "entregado", "cancelado"}
     assert lito["archivo"]["acepta"] == "image/*"
-    assert {p["linea"] for p in cliente.get("/api/productos").json()} == {"litofano", "letrero", "luna"}
+    assert {p["linea"] for p in cliente.get("/api/productos").json()} == {"litofano", "letrero", "luna", "cubo", "luna_pared"}
 
 
 def test_flujo_panel():
