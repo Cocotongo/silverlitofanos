@@ -36,6 +36,16 @@ Esfera litofano con la superficie de la Luna; no lleva foto del cliente. El reli
 
 La esfera es hueca, con una **boca plana abajo** para la placa LED (diámetro editable en el pedido; mide la placa y deja 1–2 mm de holgura) y un anillo sólido de 6 mm alrededor para que sea rígida. La cara visible de la Luna queda hacia el frente del slicer. Se imprime con la boca sobre la cama, sin soportes, con brim. Productos: Ø150 ($699, ≈150 g PLA) y Ø100 ($499, ≈60 g).
 
+### Lunas de pared (`lineas/luna_pared/`)
+Es un cuadro redondo con el relieve de la cara visible de la Luna. Una tira LED en el aro ilumina el relieve de lado, desde la orilla, y así se marcan los cráteres. No lleva foto del cliente. El relieve sale de `relieve.png`, que es el modelo de alturas LOLA del CGI Moon Kit visto de frente. Para regenerarlo: `python tools/preparar_luna_pared.py`.
+
+Salen 12 piezas y cada una cabe en la cama de la KE, hasta Ø410 mm:
+- **4 losetas** blancas (cuartos de círculo) con el relieve encima.
+- **4 piezas de marco**: aros y rayos unidos con colas de milano. Arriba lleva un ojo de cerradura para colgarla. Sus juntas caen a 22.5° de las juntas de las losetas.
+- **4 arcos del aro**, en negro: pestaña donde asienta el marco, pared para la tira LED y un labio a 45° que la tapa sin necesitar soportes.
+
+El ZIP trae un `LEEME.txt` con la impresión y el armado. Producto: Ø40 cm a $2,499. Queda de Ø407 × 37 mm y lleva unos 130 cm de tira COB USB.
+
 Al arrancar, la base de datos de la versión anterior se pasa sola al formato nuevo (los pedidos existentes quedan como litofanos).
 
 ## Requisitos (Windows)

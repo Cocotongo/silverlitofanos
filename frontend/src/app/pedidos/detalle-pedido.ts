@@ -7,12 +7,13 @@ import { CuboCampos, CuboVista } from '../lineas/cubo/cubo';
 import { LetreroCampos, LetreroVista } from '../lineas/letrero/letrero';
 import { LitofanoCampos, LitofanoVista } from '../lineas/litofano/litofano';
 import { LunaCampos } from '../lineas/luna/luna';
+import { LunaParedCampos } from '../lineas/luna-pared/luna-pared';
 import { lineaUI } from '../lineas/registro';
 import { Pedido, PedidoCambios, PedidosService } from './pedidos.service';
 
 @Component({
   selector: 'app-detalle-pedido',
-  imports: [CurrencyPipe, DatePipe, FormsModule, RouterLink, LitofanoVista, LitofanoCampos, LetreroVista, LetreroCampos, LunaCampos, CuboCampos, CuboVista],
+  imports: [CurrencyPipe, DatePipe, FormsModule, RouterLink, LitofanoVista, LitofanoCampos, LetreroVista, LetreroCampos, LunaCampos, LunaParedCampos, CuboCampos, CuboVista],
   template: `
     <a routerLink="/pedidos">← Pedidos</a>
     @if (pedido(); as p) {
@@ -68,6 +69,7 @@ import { Pedido, PedidoCambios, PedidosService } from './pedidos.service';
             @case ('litofano') { <app-litofano-campos [pedido]="$any(p)" (cambio)="cambiarConfig($event)" /> }
             @case ('letrero') { <app-letrero-campos [valor]="$any(p.config)" (cambio)="cambiarConfig($event)" /> }
             @case ('luna') { <app-luna-campos [valor]="$any(p.config)" (cambio)="cambiarConfig($event)" /> }
+            @case ('luna_pared') { <app-luna-pared-campos [valor]="$any(p.config)" (cambio)="cambiarConfig($event)" /> }
             @case ('cubo') { <app-cubo-campos [valor]="$any(p.config)" (cambio)="cambiarConfig($event)" /> }
           }
           <div class="doble">

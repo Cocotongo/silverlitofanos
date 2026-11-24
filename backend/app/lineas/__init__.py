@@ -6,8 +6,9 @@ from .cubo import Cubo
 from .letrero import Letrero
 from .litofano import Litofano
 from .luna import Luna
+from .luna_pared import LunaPared
 
-LINEAS: dict[str, Linea] = {l.id: l for l in (Litofano(), Letrero(), Luna(), Cubo())}
+LINEAS: dict[str, Linea] = {l.id: l for l in (Litofano(), Letrero(), Luna(), Cubo(), LunaPared())}
 
 
 def linea(linea_id: str) -> Linea:
