@@ -15,45 +15,46 @@ from app.main import app  # noqa: E402
 cliente = TestClient(app)
 
 
-def _armada(m):
-    """Las 12 piezas en su lugar (deshace el giro de impresion)."""
-    z0 = m["piso"] + m["marco"]
-    losetas = [g.loseta(m, i, 2.0).rotate([0, 0, 90 * i]).translate([0, 0, z0]) for i in range(4)]
-    marco = [g.pieza_marco(m, k).rotate([0, 0, 22.5 + 90 * k]).translate([0, 0, m["piso"]]) for k in range(4)]
-    aro = [g.pieza_aro(m, k).rotate([0, 0, 45 + 90 * k]) for k in range(4)]
-    return losetas, marco, aro
-
-
-@pytest.mark.parametrize("diametro", [400, 410])
-def test_piezas_caben_en_la_cama(diametro):
+@pytest.mark.parametrize("diametro,cuantas", [(300, (4, 4, 4)), (410, (4, 4, 4)), (600, (16, 16, 12))])
+def test_piezas_caben_y_no_chocan(diametro, cuantas):
     m = g.medidas(diametro)
-    for k in range(4):
-        for pieza in (g.loseta(m, k, 2.0), g.pieza_marco(m, k), g.pieza_aro(m, k)):
-            x0, y0, z0, x1, y1, z1 = pieza.bounding_box()
-            assert x1 - x0 <= g.CAMA - 4 and y1 - y0 <= g.CAMA - 4 and abs(z0) < 1e-6
-            assert pieza.volume() > 0 and pieza.genus() >= 0
+    assert tuple(g.piezas_por_tipo(m).values()) == cuantas
+    armada = g.armada(m, resolucion=3.0)
+    todas = []
+    for tipo, piezas in armada.items():
+        for pieza, medio, abarca in piezas:
+            x0, y0, z0, x1, y1, z1 = g.para_imprimir(pieza, medio, abarca).bounding_box()
+            assert x1 - x0 <= g.UTIL and y1 - y0 <= g.UTIL, (tipo, x1 - x0, y1 - y0)
+            assert pieza.volume() > 1
+            todas.append(pieza)
+    for i in range(len(todas)):
+        for j in range(i + 1, len(todas)):
+            assert (todas[i] ^ todas[j]).volume() < 0.01, (i, j)
+    # el relieve queda debajo del labio del aro y el marco asienta en la pestana
+    assert max(p.bounding_box()[5] for p, *_ in armada["loseta"]) <= m["alto"] - m["labio"] - 2 + 1e-6
+    assert min(p.bounding_box()[2] for p, *_ in armada["marco"]) == pytest.approx(m["piso"])
+    # las losetas cubren el disco (menos las juntas)
+    area = sum(p.volume() for p, *_ in armada["loseta"]) / (m["base"] + 0.5 * m["alto_relieve"])
+    assert area == pytest.approx(np.pi * m["R"] ** 2, rel=0.08)
+
+
+def test_colas_de_milano_entran_en_la_pieza_vecina():
+    # si la cola entra y no choca (prueba de arriba), la pieza vecina tiene su hueco
+    m = g.medidas(600)
+    borde = g.marco_2d(m)["borde"]
+    centro = g.Manifold.cylinder(20, borde, borde, 720).translate([0, 0, -5])
+    piezas = g.piezas_marco(m)
+    for p, medio, abarca in piezas[4:]:                    # anillo de afuera: cola hacia el centro
+        assert (p ^ centro).volume() > 20
+    for p, medio, abarca in piezas[:4]:                    # cuartos: cola mas alla de su cuña
+        a1 = medio + abarca / 2
+        tapa = g.Manifold.extrude(g._cuña(a1, a1 + 0.3, borde), 20).translate([0, 0, -5])
+        assert (p ^ tapa).volume() > 20
 
 
 def test_no_cabe_mas_grande():
     with pytest.raises(ValueError):
-        g.medidas(420)
-
-
-def test_piezas_armadas_no_chocan():
-    m = g.medidas(300)
-    losetas, marco, aro = _armada(m)
-    todas = losetas + marco + aro
-    for i in range(len(todas)):
-        for j in range(i + 1, len(todas)):
-            assert (todas[i] ^ todas[j]).volume() < 0.01, (i, j)
-    # las colas de milano entran en la pieza vecina (sin ellas los aros del marco no llegarian)
-    juntas = sum(p.volume() for p in marco)
-    assert (marco[0] + marco[1] + marco[2] + marco[3]).volume() == pytest.approx(juntas, rel=1e-6)
-    x0, y0, _, x1, y1, _ = g.pieza_marco(m, 0).bounding_box()
-    assert x1 - x0 > m["R"]                                  # la cola sobresale de la cuña
-    # el relieve queda debajo del labio del aro y el marco asienta en la pestana
-    assert max(p.bounding_box()[5] for p in losetas) <= m["alto"] - m["labio"] - 2 + 1e-6
-    assert min(p.bounding_box()[2] for p in marco) == pytest.approx(m["piso"])
+        g.medidas(800)
 
 
 def test_cara_visible_de_frente():
@@ -77,6 +78,12 @@ def test_pedido_de_luna_de_pared():
     assert cliente.get(f"/api/pedidos/{p['id']}/previa").headers["content-type"] == "image/png"
     z = zipfile.ZipFile(io.BytesIO(cliente.get(f"/api/pedidos/{p['id']}/descarga").content))
     nombres = z.namelist()
-    assert len([n for n in nombres if n.endswith(".stl")]) == 12 and "LEEME.txt" in nombres
-    assert any("loseta1_blanco" in n for n in nombres) and any("aro3_negro" in n for n in nombres)
-    assert cliente.patch(f"/api/pedidos/{p['id']}", json={"config": {"diametro": 500}}).status_code == 422
+    assert len([n for n in nombres if n.endswith(".stl")]) == 12 and gen["resumen"]["losetas"] == 4 and "LEEME.txt" in nombres
+    assert any("loseta01_blanco" in n for n in nombres) and any("aro03_negro" in n for n in nombres)
+    assert cliente.patch(f"/api/pedidos/{p['id']}", json={"config": {"diametro": 700}}).status_code == 422
+
+
+def test_producto_de_60_cm():
+    r = cliente.post("/api/pedidos", data={"cliente": "Mau", "linea": "luna_pared", "producto": "luna-pared-60"})
+    assert r.status_code == 201, r.text
+    assert r.json()["precio"] == 4999 and r.json()["config"]["diametro"] == 600

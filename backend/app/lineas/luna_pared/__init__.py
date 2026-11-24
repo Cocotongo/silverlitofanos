@@ -17,7 +17,7 @@ class Material(str, Enum):
 
 class ConfigLunaPared(BaseModel):
     material: Material = Material.pla
-    diametro: float = Field(400, ge=200, le=410)        # en 4 piezas por parte, cabe en la cama de la KE
+    diametro: float = Field(400, ge=200, le=600)        # hasta Ø410 en 4 piezas por parte; mas grande, en mas
     alto_relieve: float = Field(5, ge=2, le=8)          # cuanto sobresalen los crateres
 
 
@@ -27,6 +27,7 @@ class LunaPared(Linea):
     Config = ConfigLunaPared
     productos = [
         {"id": "luna-pared-40", "nombre": "Luna de pared Ø40 cm", "precio": 2499, "config": {"diametro": 400}},
+        {"id": "luna-pared-60", "nombre": "Luna de pared Ø60 cm", "precio": 4999, "config": {"diametro": 600}},
     ]
     flujo = [
         Paso("nuevo", "Nuevo", Fase.nuevo),
@@ -48,7 +49,7 @@ class LunaPared(Linea):
         colores = {"loseta": "blanco", "marco": "cualquier_color", "aro": "negro"}
         with zipfile.ZipFile(carpeta / self.descarga, "w", zipfile.ZIP_DEFLATED) as z:
             for stl in sorted(piezas.glob("*.stl")):
-                color = colores[stl.stem.rstrip("0123456789")]
+                color = colores[stl.stem.rstrip("0123456789")]  # loseta01 -> loseta
                 z.write(stl, f"pedido{pedido.id}_{stl.stem}_{color}.stl")
                 stl.unlink()
             z.writestr("LEEME.txt", LEEME.format(**r, material=c.material.value.upper()))
@@ -58,18 +59,19 @@ class LunaPared(Linea):
 
 LEEME = """Luna de pared ({medidas})
 
-Losetas 1-4 ({material} blanco, ≈ {gramos} g en total si fueran solidas):
+Losetas 01-{losetas:02d} ({material} blanco, ≈ {gramos} g en total si fueran solidas):
   planas en la cama, relieve hacia arriba, capa 0.16 mm, 3 paredes, relleno 20 %.
-  La loseta 1 es el cuarto de arriba a la derecha y siguen en contra del reloj.
-Marco 1-4 (PLA de cualquier color, ≈ {gramos_marco} g): planos, relleno 20 %.
-  El marco 1 lleva el ojo de cerradura para colgar y va arriba.
-Aro 1-4 (PLA negro, ≈ {gramos_aro} g): de pie, con la pestana en la cama; el labio
-  de arriba tiene 45 grados y no necesita soportes. El aro 3 lleva el agujero del cable.
+  Las losetas 01-04 son los cuartos del centro: 01 arriba a la derecha y siguen en contra del
+  reloj. Si hay mas, son el anillo de afuera, empezando a la derecha y en contra del reloj.
+Marco 01-{piezas_marco:02d} (PLA de cualquier color, ≈ {gramos_marco} g): planas, relleno 20 %.
+  La pieza 01 lleva el ojo de cerradura para colgar y va arriba.
+Aro 01-{piezas_aro:02d} (PLA negro, ≈ {gramos_aro} g): de pie, con la pestana en la cama; el labio
+  de arriba tiene 45 grados y no necesita soportes. El arco de abajo lleva el agujero del cable.
 
 Armado:
-  1. Une las 4 piezas del marco con sus colas de milano (una gota de pegamento).
-  2. Pega los 4 arcos del aro alrededor del marco: el marco asienta en la pestana de abajo.
+  1. Une las piezas del marco con sus colas de milano (una gota de pegamento en cada una).
+  2. Pega los arcos del aro alrededor del marco: el marco asienta en la pestana de abajo.
   3. Pega la tira LED (COB blanca neutra de 8-10 mm, ≈ {tira_cm} cm, USB 5 V) por dentro
-     del aro, justo debajo del labio, mirando al centro. Saca el cable por el agujero del aro 3.
-  4. Pon silicon en el marco y asienta las losetas (la junta de las losetas cae sobre los rayos).
+     del aro, justo debajo del labio, mirando al centro. Saca el cable por el agujero de abajo.
+  4. Pon silicon en el marco y asienta las losetas: sus juntas caen sobre los rayos y aros.
 """

@@ -12,10 +12,10 @@ export interface ConfigLunaPared {
 export const LUNA_PARED_UI: LineaUI = {
   subtitulo: (p) => `Luna de pared Ø${Number(p.config['diametro']) / 10} cm · ${String(p.config['material']).toUpperCase()}`,
   resumen: (p) =>
-    `${p.resumen['medidas']} · losetas ≈ ${p.resumen['gramos']} g, marco ≈ ${p.resumen['gramos_marco']} g, ` +
+    `${p.resumen['medidas']} · ${p.resumen['losetas']} losetas ≈ ${p.resumen['gramos']} g, marco ≈ ${p.resumen['gramos_marco']} g, ` +
     `aro ≈ ${p.resumen['gramos_aro']} g · tira LED ${p.resumen['tira_cm']} cm`,
   generar: 'Generar piezas',
-  generando: 'Generando las 12 piezas…',
+  generando: 'Generando las piezas…',
   descargar: 'Descargar ZIP',
   mensaje: (p) => `Hola ${p.cliente}, así se verá tu luna de pared encendida (pedido #${p.id}).`,
 };
@@ -35,11 +35,12 @@ export const LUNA_PARED_UI: LineaUI = {
         </select>
       </div>
       <div><label>Diámetro (mm)</label>
-        <input type="number" min="200" max="410" [ngModel]="c.diametro" (change)="numero('diametro', $event)" /></div>
+        <input type="number" min="200" max="600" [ngModel]="c.diametro" (change)="numero('diametro', $event)" /></div>
     </div>
     <div><label>Alto del relieve (mm)</label>
       <input type="number" min="2" max="8" step="0.5" [ngModel]="c.alto_relieve" (change)="numero('alto_relieve', $event)" />
-      <small>Más alto = cráteres más marcados con la luz de lado, pero más filamento.</small></div>
+      <small>Más alto = cráteres más marcados con la luz de lado, pero más filamento.
+        Hasta Ø410 sale en 4 piezas por parte; más grande, en más.</small></div>
   `,
   styles: `
     :host { display: grid; gap: 12px; }
