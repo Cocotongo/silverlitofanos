@@ -1,0 +1,48 @@
+[
+  {
+    "nombre": "Mercado Libre",
+    "activa": true,
+    "busqueda": "https://listado.mercadolibre.com.mx/{q-}",
+    "item": "li.ui-search-layout__item",
+    "titulo": ".poly-component__title, h3",
+    "precio": ".poly-price__current .andes-money-amount__fraction, .andes-money-amount__fraction",
+    "enlace": "a.poly-component__title, a[href]"
+  },
+  {
+    "nombre": "Amazon México",
+    "activa": true,
+    "busqueda": "https://www.amazon.com.mx/s?k={q+}",
+    "item": "[data-component-type='s-search-result']",
+    "titulo": "h2",
+    "precio": ".a-price:not(.a-text-price) .a-offscreen, .a-price .a-offscreen",
+    "enlace": "a:has(h2), a.a-link-normal[href*='/dp/'], a[href]"
+  },
+  {
+    "nombre": "AliExpress",
+    "activa": true,
+    "busqueda": "https://www.aliexpress.com/w/wholesale-{q-}.html",
+    "item": "a.search-card-item",
+    "titulo": "h3, [class*='title']",
+    "precio": "[class*='price-sale'], [class*='price']",
+    "enlace": "a.search-card-item"
+  },
+  {
+    "nombre": "Steren",
+    "activa": true,
+    "busqueda": "https://www.steren.com.mx/catalogsearch/result/?q={q+}",
+    "item": "li.pcard",
+    "titulo": "h3.nm, h3",
+    "precio_attr": "data-precio",
+    "precio": ".price-card, .money .price",
+    "enlace": "a.pcard-link, a[href]"
+  },
+  {
+    "nombre": "Shop3D",
+    "activa": true,
+    "busqueda": "https://shop3d.mx/?s={q+}&post_type=product",
+    "item": "li.product",
+    "titulo": ".woocommerce-loop-product__title, h2, h3",
+    "precio": ".price ins .amount, .price .amount",
+    "enlace": "a.woocommerce-LoopProduct-link, a[href]"
+  }
+]

@@ -28,6 +28,9 @@ La esfera es hueca, con una **boca plana abajo** para la placa LED (diámetro ed
 
 Al arrancar, la base de datos de la versión anterior se pasa sola al formato nuevo (los pedidos existentes quedan como litofanos).
 
+## Cotizador de materia prima (`cotizador/`)
+Buscador aparte que compara precios de un insumo en varias tiendas (Mercado Libre, Amazon, AliExpress, Steren, Shop3D y las que agregues). Corre en tu PC con `python cotizador.py`; instrucciones en [cotizador/LEEME.md](cotizador/LEEME.md).
+
 ## Requisitos (Windows)
 - Python 3.11 o más nuevo
 - Node.js 22.12 o más nuevo

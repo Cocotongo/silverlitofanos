@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cotizador SilVer</title>
+<style>
+  :root { --fondo: #f6f3ee; --panel: #fff; --texto: #2b2620; --suave: #7a7166; --borde: #e4ddd2;
+    --acento: #d98a2b; --acento-2: #b8701c; --ok: #2f8a4c; --mal: #c0392b; --barato: #e6f4ea; color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fondo: #1b1916; --panel: #25221e; --texto: #f1ebe2; --suave: #a99f92; --borde: #3a352e;
+      --acento: #f0a64a; --acento-2: #ffbe6b; --barato: #1f3526; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); }
+  a { color: var(--acento-2); }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px;
+    background: var(--panel); border-bottom: 1px solid var(--borde); }
+  .marca { font-weight: 800; font-size: 1.2rem; text-decoration: none; color: var(--texto); }
+  .marca span { color: var(--acento); }
+  nav { display: flex; gap: 6px; }
+  nav button { background: transparent; color: var(--texto); border: 1px solid transparent; }
+  nav button.activo { border-color: var(--borde); background: var(--fondo); }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  button { background: var(--acento); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px;
+    font: inherit; font-weight: 600; cursor: pointer; }
+  button:hover { background: var(--acento-2); }
+  button.secundario { background: transparent; color: var(--texto); border: 1px solid var(--borde); }
+  button.peligro { background: transparent; color: var(--mal); border: 1px solid var(--mal); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, textarea { width: 100%; padding: 9px 10px; border: 1px solid var(--borde); border-radius: 8px;
+    background: var(--fondo); color: var(--texto); font: inherit; }
+  label { display: block; font-size: .82rem; color: var(--suave); margin: 10px 0 4px; }
+  .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 16px; }
+  .buscador { display: flex; gap: 8px; }
+  .buscador input { font-size: 1.1rem; padding: 12px 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 99px;
+    border: 1px solid var(--borde); background: var(--panel); font-size: .88rem; cursor: pointer; user-select: none; }
+  .chip input { width: auto; margin: 0; }
+  .opciones { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: .88rem; color: var(--suave); margin-top: 8px; }
+  .opciones label { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-size: .88rem; }
+  .opciones input[type=checkbox] { width: auto; }
+  .opciones input[type=number] { width: 90px; padding: 5px 8px; }
+  .resumen { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin: 18px 0; }
+  .resumen .tarjeta { padding: 12px; }
+  .resumen .nombre { font-weight: 700; }
+  .resumen .precio { font-size: 1.4rem; font-weight: 800; margin: 4px 0; }
+  .resumen .nota { font-size: .8rem; color: var(--suave); }
+  .resumen .mejor { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok) inset; }
+  .resumen .mal { color: var(--mal); }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borde); vertical-align: middle; font-size: .92rem; }
+  th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); }
+  td.precio { font-weight: 700; white-space: nowrap; text-align: right; }
+  tr.barato td { background: var(--barato); }
+  td img { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; background: #fff; }
+  .tienda-tag { font-size: .78rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--fondo); border: 1px solid var(--borde); white-space: nowrap; }
+  .vacio { color: var(--suave); text-align: center; padding: 30px; }
+  .cargando { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--borde); border-top-color: var(--acento);
+    border-radius: 50%; animation: gira .8s linear infinite; vertical-align: -3px; margin-right: 6px; }
+  @keyframes gira { to { transform: rotate(360deg); } }
+  .pie { font-size: .82rem; color: var(--suave); margin-top: 10px; }
+  .error { color: var(--mal); }
+  .tienda-form { margin-bottom: 14px; }
+  .tienda-form .fila { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .tienda-form h3 { margin: 0; display: flex; gap: 10px; align-items: center; }
+  .tienda-form h3 input[type=text] { font-weight: 700; font-size: 1rem; }
+  .acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .prueba { margin-top: 10px; font-size: .85rem; }
+  .ayuda { font-size: .88rem; color: var(--suave); line-height: 1.5; }
+  .ayuda code { background: var(--fondo); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--borde); }
+  @media (max-width: 640px) {
+    .tienda-form .fila { grid-template-columns: 1fr; }
+    .ocultar-movil { display: none; }
+    header { padding: 10px 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="marca">Sil<span>Ver</span> · Cotizador</span>
+  <nav>
+    <button id="tab-buscar" class="activo">Buscar</button>
+    <button id="tab-tiendas">Tiendas</button>
+  </nav>
+</header>
+
+<main>
+  <section id="vista-buscar">
+    <form class="buscador" id="form-buscar">
+      <input id="q" placeholder="¿Qué materia prima buscas? Ej. filamento pla blanco 1kg" autocomplete="off" autofocus>
+      <button id="btn-buscar">Buscar</button>
+    </form>
+    <div class="chips" id="chips"></div>
+    <div class="opciones">
+      <label><input type="checkbox" id="f-palabras" checked> Solo los que tengan todas las palabras</label>
+      <label>Precio mínimo $<input type="number" id="f-min" min="0" step="1" placeholder="0"></label>
+      <label>Máximo $<input type="number" id="f-max" min="0" step="1" placeholder="sin límite"></label>
+      <a href="/api/historial.csv">Historial (CSV)</a>
+    </div>
+    <div id="resultado"></div>
+  </section>
+
+  <section id="vista-tiendas" hidden>
+    <div class="tarjeta ayuda" style="margin-bottom:14px">
+      Cada tienda es una página de búsqueda y unos selectores CSS para leer sus productos.
+      En la URL pon <code>{q+}</code> (palabras con +), <code>{q-}</code> (con guiones) o <code>{q}</code> donde va lo que buscas.
+      Para encontrar los selectores: en la tienda, clic derecho sobre un producto → <b>Inspeccionar</b>, y busca la
+      clase que se repite en cada producto (<b>Producto</b>), la del nombre (<b>Título</b>) y la del precio (<b>Precio</b>).
+      Si pones varios separados por coma se prueban en orden. Muchas tiendas mexicanas usan WooCommerce:
+      el botón "Plantilla WooCommerce" llena los selectores típicos. Usa <b>Probar</b> antes de guardar.
+    </div>
+    <div id="lista-tiendas"></div>
+    <div class="acciones">
+      <button class="secundario" id="btn-agregar">+ Agregar tienda</button>
+      <button id="btn-guardar">Guardar tiendas</button>
+      <span id="msg-tiendas" class="pie"></span>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+let tiendas = [];
+let ultimo = null;
+
+function el(tag, attrs = {}, ...hijos) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const h of hijos.flat()) if (h != null) e.append(h.nodeType ? h : document.createTextNode(h));
+  return e;
+}
+const seguro = (u) => (typeof u === 'string' && /^https?:\/\//.test(u) ? u : null);
+
+// --------------------------------------------------------------- pestañas
+function verTab(cual) {
+  $('#vista-buscar').hidden = cual !== 'buscar';
+  $('#vista-tiendas').hidden = cual !== 'tiendas';
+  $('#tab-buscar').classList.toggle('activo', cual === 'buscar');
+  $('#tab-tiendas').classList.toggle('activo', cual === 'tiendas');
+  if (cual === 'tiendas') pintarTiendas();
+}
+$('#tab-buscar').onclick = () => verTab('buscar');
+$('#tab-tiendas').onclick = () => verTab('tiendas');
+
+// --------------------------------------------------------------- tiendas
+async function cargarTiendas() {
+  tiendas = await (await fetch('/api/tiendas')).json();
+  pintarChips();
+}
+
+function pintarChips() {
+  const c = $('#chips');
+  c.replaceChildren(...tiendas.map((t, i) =>
+    el('label', { class: 'chip' },
+      el('input', { type: 'checkbox', checked: t.activa, onchange: (e) => { t.activa = e.target.checked; } }),
+      t.nombre)));
+}
+
+const PLANTILLA_WOO = {
+  item: 'li.product', titulo: '.woocommerce-loop-product__title, h2, h3',
+  precio: '.price ins .amount, .price .amount', precio_attr: '', enlace: 'a.woocommerce-LoopProduct-link, a[href]',
+};
+
+function campo(t, clave, etiqueta, ph) {
+  return el('div', {},
+    el('label', {}, etiqueta),
+    el('input', { type: 'text', value: t[clave] || '', placeholder: ph || '', oninput: (e) => { t[clave] = e.target.value; } }));
+}
+
+function pintarTiendas() {
+  const lista = $('#lista-tiendas');
+  lista.replaceChildren(...tiendas.map((t, i) => {
+    const prueba = el('div', { class: 'prueba' });
+    return el('div', { class: 'tarjeta tienda-form' },
+      el('h3', {},
+        el('input', { type: 'text', value: t.nombre, placeholder: 'Nombre de la tienda', oninput: (e) => { t.nombre = e.target.value; } }),
+        el('label', { class: 'chip', style: 'margin:0' },
+          el('input', { type: 'checkbox', checked: t.activa, onchange: (e) => { t.activa = e.target.checked; pintarChips(); } }), 'Activa')),
+      campo(t, 'busqueda', 'URL de búsqueda', 'https://tienda.mx/buscar?q={q+}'),
+      el('div', { class: 'fila' },
+        campo(t, 'item', 'Producto (selector de cada tarjeta)', 'li.product'),
+        campo(t, 'titulo', 'Título', 'h2, h3'),
+        campo(t, 'precio', 'Precio', '.price'),
+        campo(t, 'enlace', 'Enlace (opcional)', 'a[href]'),
+        campo(t, 'precio_attr', 'Precio en atributo (opcional)', 'data-precio')),
+      el('div', { class: 'acciones' },
+        el('button', { class: 'secundario', onclick: () => probarTienda(t, prueba) }, 'Probar'),
+        el('button', { class: 'secundario', onclick: () => { Object.assign(t, PLANTILLA_WOO); pintarTiendas(); } }, 'Plantilla WooCommerce'),
+        el('button', { class: 'peligro', onclick: () => { if (confirm('¿Quitar ' + (t.nombre || 'esta tienda') + '?')) { tiendas.splice(i, 1); pintarTiendas(); pintarChips(); } } }, 'Quitar')),
+      prueba);
+  }));
+}
+
+async function probarTienda(t, caja) {
+  const q = $('#q').value.trim() || prompt('¿Qué busco para probar?', 'filamento pla blanco');
+  if (!q) return;
+  caja.replaceChildren(el('span', { class: 'cargando' }), 'Probando con «' + q + '»…');
+  try {
+    const r = await fetch('/api/probar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q, tienda: t }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'Revisa que estén llenos URL, Producto y Título.');
+    if (!d.resultados.length) { caja.replaceChildren(el('span', { class: 'error' }, d.mensaje || 'Sin resultados.')); return; }
+    caja.replaceChildren(
+      el('div', {}, `✓ ${d.resultados.length} productos en ${d.segundos} s. Los primeros:`),
+      el('ul', {}, d.resultados.slice(0, 5).map((p) => el('li', {}, fmt.format(p.precio) + ' · ' + p.titulo))));
+  } catch (e) {
+    caja.replaceChildren(el('span', { class: 'error' }, e.message));
+  }
+}
+
+$('#btn-agregar').onclick = () => {
+  tiendas.push({ nombre: '', activa: true, busqueda: '', item: '', titulo: '', precio: '', precio_attr: '', enlace: '', max: 20 });
+  pintarTiendas();
+};
+$('#btn-guardar').onclick = async () => {
+  const msg = $('#msg-tiendas');
+  msg.textContent = 'Guardando…';
+  const r = await fetch('/api/tiendas', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tiendas) });
+  const d = await r.json();
+  if (!r.ok) { msg.textContent = typeof d.detail === 'string' ? d.detail : 'Falta llenar nombre, URL, Producto o Título en alguna tienda.'; msg.className = 'pie error'; return; }
+  tiendas = d; msg.className = 'pie'; msg.textContent = 'Guardado ✓'; pintarChips();
+};
+
+// --------------------------------------------------------------- búsqueda
+const VACIAS = new Set(['de', 'para', 'con', 'el', 'la', 'los', 'las', 'y', 'en', 'un', 'una', 'del', 'a']);
+function normal(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/(\d)\s+(kg|g|gr|mm|cm|m|w|v|pzs?|piezas?)\b/g, '$1$2').replace(/,/g, '.');
+}
+function palabras(q) { return normal(q).split(/[^a-z0-9.+]+/).filter((p) => p.length > 1 && !VACIAS.has(p)); }
+
+$('#form-buscar').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const q = $('#q').value.trim();
+  if (q.length < 2) return;
+  const elegidas = tiendas.filter((t) => t.activa).map((t) => t.nombre);
+  if (!elegidas.length) { $('#resultado').replaceChildren(el('p', { class: 'error' }, 'Marca al menos una tienda.')); return; }
+  $('#btn-buscar').disabled = true;
+  $('#resultado').replaceChildren(el('p', { class: 'vacio' }, el('span', { class: 'cargando' }),
+    `Buscando «${q}» en ${elegidas.join(', ')}… (10 a 30 segundos)`));
+  try {
+    const r = await fetch('/api/buscar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q, tiendas: elegidas }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'No se pudo buscar.');
+    ultimo = d;
+    pintarResultado();
+  } catch (e) {
+    $('#resultado').replaceChildren(el('p', { class: 'error' }, e.message));
+  } finally {
+    $('#btn-buscar').disabled = false;
+  }
+};
+for (const id of ['f-palabras', 'f-min', 'f-max']) $('#' + id).addEventListener('input', () => ultimo && pintarResultado());
+
+function pintarResultado() {
+  const d = ultimo;
+  const exigir = $('#f-palabras').checked ? palabras(d.q) : [];
+  const min = parseFloat($('#f-min').value) || 0;
+  const max = parseFloat($('#f-max').value) || Infinity;
+  const pasa = (p) => p.precio >= min && p.precio <= max && exigir.every((w) => normal(p.titulo).includes(w));
+
+  const filas = [];
+  const tarjetas = d.tiendas.map((t) => {
+    const buenos = t.resultados.filter(pasa).sort((a, b) => a.precio - b.precio);
+    buenos.forEach((p) => filas.push({ ...p, tienda: t.tienda }));
+    const ir = seguro(t.url);
+    if (t.estado === 'error' || (t.estado === 'vacio')) {
+      return { t, min: Infinity, nodo: el('div', { class: 'tarjeta' },
+        el('div', { class: 'nombre' }, t.tienda),
+        el('div', { class: 'nota mal' }, t.estado === 'error' ? 'Error: ' + t.mensaje : t.mensaje),
+        ir && el('a', { href: ir, target: '_blank', rel: 'noopener', class: 'nota' }, 'Abrir búsqueda en la tienda')) };
+    }
+    const m = buenos[0];
+    return { t, min: m ? m.precio : Infinity, nodo: el('div', { class: 'tarjeta' },
+      el('div', { class: 'nombre' }, t.tienda),
+      el('div', { class: 'precio' }, m ? fmt.format(m.precio) : '—'),
+      el('div', { class: 'nota' }, m ? `${buenos.length} de ${t.resultados.length} coinciden · ${t.segundos} s` : `${t.resultados.length} productos, ninguno con todas las palabras`),
+      ir && el('a', { href: ir, target: '_blank', rel: 'noopener', class: 'nota' }, 'Ver en la tienda')) };
+  });
+  const mejor = Math.min(...tarjetas.map((x) => x.min));
+  tarjetas.forEach((x) => { if (x.min === mejor && isFinite(mejor)) x.nodo.classList.add('mejor'); });
+  filas.sort((a, b) => a.precio - b.precio);
+
+  const tabla = filas.length ? el('table', {},
+    el('thead', {}, el('tr', {}, el('th', { class: 'ocultar-movil' }), el('th', {}, 'Producto'), el('th', {}, 'Tienda'), el('th', { style: 'text-align:right' }, 'Precio'))),
+    el('tbody', {}, filas.map((p, i) => {
+      const u = seguro(p.url), img = seguro(p.imagen);
+      return el('tr', { class: i === 0 ? 'barato' : '' },
+        el('td', { class: 'ocultar-movil' }, img && el('img', { src: img, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' })),
+        el('td', {}, u ? el('a', { href: u, target: '_blank', rel: 'noopener' }, p.titulo) : p.titulo),
+        el('td', {}, el('span', { class: 'tienda-tag' }, p.tienda)),
+        el('td', { class: 'precio' }, fmt.format(p.precio)));
+    })))
+    : el('p', { class: 'vacio' }, 'Ningún producto pasa los filtros. Prueba quitando "Solo los que tengan todas las palabras".');
+
+  $('#resultado').replaceChildren(
+    el('div', { class: 'resumen' }, tarjetas.map((x) => x.nodo)),
+    tabla,
+    el('p', { class: 'pie' }, `Precios leídos de cada tienda: ${new Date(d.fecha).toLocaleString("es-MX")} · No incluyen envío; en AliExpress y Mercado Libre el precio puede ser "desde" (según color o tamaño). Revisa en la tienda antes de comprar.`));
+}
+
+cargarTiendas();
+</script>
+</body>
+</html>
